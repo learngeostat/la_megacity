@@ -11,15 +11,15 @@ import geopandas as gpd
 import os
 import math
 import dash
+import gcsfs
 
 import zipfile
 import io
-import shutil
 import tempfile
 
 
 # Modified import statement
-from la_megacity.utils.constants import SHAPEFILE_PATH, OCO3_DATA_PATH  # Assuming the constants are in this path
+from la_megacity.utils import constants as prm
 import logging
 logging.getLogger("fiona").disabled = True
 
@@ -81,12 +81,13 @@ def update_time_series_section(time_series_section):
 
 
 # Add after existing functions
+# CORRECTED Lines 91-93
 def load_geodata():
     """Load geographical data with proper error handling"""
     try:
-        census_tracts = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'census_tract_clipped.shp'))
-        zip_codes = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'zip_code_socab.shp'))
-        socab_boundary = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'socabbound.shp'))
+        census_tracts = gpd.read_file(prm.SHAPEFILES['census_tract_clipped'])
+        zip_codes = gpd.read_file(prm.SHAPEFILES['zip_code_socab'])
+        socab_boundary = gpd.read_file(prm.SHAPEFILES['socabbound'])
         return census_tracts, zip_codes, socab_boundary
     except Exception:
         return None, None
@@ -110,10 +111,7 @@ def get_years_and_dates(dates):
 def load_oco3_data():
     """Load OCO-3 data with error handling"""
     try:
-        csv_path = os.path.join(OCO3_DATA_PATH, 'clipped_oco3_obs.csv')
-        if not os.path.exists(csv_path):
-            raise FileNotFoundError
-            
+        csv_path = prm.DATA_FILES['oco3_obs']
         df = pd.read_csv(csv_path, 
                         dtype={
                             'year': int,
@@ -455,18 +453,28 @@ def create_header_card():
                 ], width=10),
                 dbc.Col([
                     html.Div([
-                        dbc.Button([
-                            "Documentation ",
-                            html.I(className="fas fa-file-pdf")
-                        ], color="secondary", className="me-2", id="oco3-doc-button"),
+                        # Modified Documentation Button to link to an external webpage
+                        html.A(
+                            dbc.Button([
+                                "Documentation ",
+                                html.I(className="fas fa-file-pdf")
+                            ], color="secondary", className="me-2"),
+                            href="https://ocov3.jpl.nasa.gov/sams/",
+                            target="_blank"  # Opens the link in a new browser tab
+                        ),
+                        
+                        # Unchanged Help Button
                         dbc.Button([
                             "Help ",
                             html.I(className="fas fa-question-circle")
                         ], color="secondary", className="me-2", id="oco3-help-button"),
+                
+                        # Unchanged Reset Button
                         dbc.Button([
                             "Reset ",
                             html.I(className="fas fa-redo")
                         ], color="secondary", id="oco3-restart-button")
+                
                     ], className="d-flex justify-content-end")
                 ], width=2)
             ], className="align-items-center")
@@ -1338,51 +1346,71 @@ def register_callbacks(app):
                 return not is_open
             return is_open
         
+        
         @app.callback(
-            Output("download-spatial-data-content", "data"),
-            Input("download-spatial-data", "n_clicks"),
-            prevent_initial_call=True
+        Output("download-spatial-data-content", "data"),
+        Input("download-spatial-data", "n_clicks"),
+        prevent_initial_call=True
         )
         def download_spatial_data(n_clicks):
+            """
+            Downloads spatial data files (shapefiles and CSV) from GCS,
+            zips them, and provides them for download.
+            """
             if not n_clicks:
                 return None
-
-            # Create a temporary directory to store files
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Copy shapefiles
-                shapefile_types = ['.shp', '.shx', '.dbf', '.prj']
-                
-                # Copy ZIP code files
-                zip_base = os.path.join(SHAPEFILE_PATH, 'zip_code_socab')
-                for ext in shapefile_types:
-                    if os.path.exists(zip_base + ext):
-                        shutil.copy2(zip_base + ext, os.path.join(temp_dir, f'zip_code_socab{ext}'))
-
-                # Copy SOCAB boundary files
-                socab_base = os.path.join(SHAPEFILE_PATH, 'socabbound')
-                for ext in shapefile_types:
-                    if os.path.exists(socab_base + ext):
-                        shutil.copy2(socab_base + ext, os.path.join(temp_dir, f'socabbound{ext}'))
-
-                # Copy CSV file
-                csv_path = os.path.join(OCO3_DATA_PATH, 'clipped_oco3_obs.csv')
-                shutil.copy2(csv_path, os.path.join(temp_dir, 'oco3_observations.csv'))
-
-                # Create zip file in memory
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for root, dirs, files in os.walk(temp_dir):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            arc_name = os.path.relpath(file_path, temp_dir)
-                            zip_file.write(file_path, arc_name)
-
-                zip_buffer.seek(0)
-                
-                return dcc.send_bytes(
-                    zip_buffer.getvalue(),
-                    "oco3_spatial_data.zip"
-                )
+        
+            try:
+                # Authenticate and create a GCS filesystem object
+                fs = gcsfs.GCSFileSystem()
+        
+                # Create a temporary directory to store files for zipping
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    
+                    # --- Download Shapefiles from GCS ---
+                    shapefile_types = ['.shp', '.shx', '.dbf', '.prj']
+                    
+                    # 1. Download ZIP code shapefiles
+                    zip_base_gcs = f"{prm.SHAPEFILE_PATH}/zip_code_socab"
+                    for ext in shapefile_types:
+                        gcs_path = zip_base_gcs + ext
+                        local_path = os.path.join(temp_dir, f'zip_code_socab{ext}')
+                        if fs.exists(gcs_path):
+                            fs.get(gcs_path, local_path)
+        
+                    # 2. Download SOCAB boundary shapefiles
+                    socab_base_gcs = f"{prm.SHAPEFILE_PATH}/socabbound"
+                    for ext in shapefile_types:
+                        gcs_path = socab_base_gcs + ext
+                        local_path = os.path.join(temp_dir, f'socabbound{ext}')
+                        if fs.exists(gcs_path):
+                            fs.get(gcs_path, local_path)
+        
+                    # --- Download CSV file from GCS ---
+                    csv_gcs_path = prm.DATA_FILES['oco3_obs']
+                    csv_local_path = os.path.join(temp_dir, 'oco3_observations.csv')
+                    if fs.exists(csv_gcs_path):
+                        fs.get(csv_gcs_path, csv_local_path)
+        
+                    # --- Zip the downloaded files ---
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for root, _, files in os.walk(temp_dir):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                arc_name = os.path.relpath(file_path, temp_dir)
+                                zip_file.write(file_path, arc_name)
+        
+                    zip_buffer.seek(0)
+                    
+                    return dcc.send_bytes(
+                        zip_buffer.getvalue(),
+                        "oco3_spatial_data.zip"
+                    )
+                    
+            except Exception as e:
+                print(f"Error during spatial data download: {e}")
+                return None        
             
         @app.callback(
         Output("download-timeseries-data-content", "data"),
