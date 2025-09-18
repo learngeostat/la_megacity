@@ -8,4 +8,4 @@ steps:
 images:
 - 'us-west2-docker.pkg.dev/primeval-gear-472313-v7/la-megacity/la-megacity-dashboard:latest'
 options:
-  logging: CLOUD_LOGGING_ONLY
+  logging: NONE
