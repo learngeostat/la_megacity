@@ -8,7 +8,6 @@ Created on Sat Jan  4 10:58:10 2025
 
 import pandas as pd
 import numpy as np
-import os
 import geopandas as gpd
 import xarray as xr
 from la_megacity.utils import constants as prm
@@ -16,10 +15,9 @@ from shapely.vectorized import contains
 from scipy.spatial import cKDTree
 from la_megacity.utils import conc_func as cfunc 
 
-filename = os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc')
+filename = prm.DATA_FILES['fluxresults1']
 #hdf_filename = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data.h5')
-spatial_hdf_filename = os.path.join(prm.SITE_DATA_PATH, 'spatial_data.h5')
-
+spatial_hdf_filename = prm.DATA_FILES['spatial_data']
 
 def load_netcdf_data(filename):
     """
@@ -136,11 +134,6 @@ def aggregate_to_shapefile_timeseries(
 
     return df
 
-def contains(polygon, x, y):
-    """Vectorized point-in-polygon test"""
-    from shapely.vectorized import contains as shapely_contains
-    return shapely_contains(polygon, x, y)
-
 def process_flux_and_uncertainty(data, boundaries_gdf, id_column, prefix=None, method='hybrid', distance_threshold=5000):
     """
     Process both flux and uncertainty data.
@@ -178,32 +171,22 @@ def process_flux_and_uncertainty(data, boundaries_gdf, id_column, prefix=None, m
     }
 
 
-# Example usage:
-"""
-import geopandas as gpd
-import os
-import prm  # your parameters module
+# CORRECTED Lines 219-224
+# Get file URIs from the constants file
+filename = prm.DATA_FILES['fluxresults1']
+zip_boundaries_uri = prm.SHAPEFILES['zip_code_socab']
+census_boundaries_uri = prm.SHAPEFILES['census_tract_clipped']
+custom_boundaries_uri = prm.SHAPEFILES['zones_partitoned']
 
-# Load boundaries
-zip_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'zip_code_socab.shp'))
-census_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'census_tract_clipped.shp'))
-custom_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'zones_partitoned.shp'))
+# Load boundaries from GCS
+zip_boundaries = gpd.read_file(zip_boundaries_uri)
+census_boundaries = gpd.read_file(census_boundaries_uri)
+custom_boundaries = gpd.read_file(custom_boundaries_uri)
 
-# Load netCDF data
+# Load netCDF data from GCS
 data = load_netcdf_data(filename)
 
-# Process for each boundary type
-spatial_agg_data = process_flux_and_uncertainty(data, zip_boundaries, 'ZIP_CODE')  # prefix='zip' inferred
-census_agg_data = process_flux_and_uncertainty(data, census_boundaries, 'TRACTCE')  # prefix='census' inferred
-custom_agg_data = process_flux_and_uncertainty(data, custom_boundaries, 'Zones')   # prefix='custom' inferred
-"""
 
-filename = os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc')
-
-# Load boundaries
-zip_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'zip_code_socab.shp'))
-census_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'census_tract_clipped.shp'))
-custom_boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, 'zones_partitoned.shp'))
 
 # Load netCDF data
 data = load_netcdf_data(filename)
