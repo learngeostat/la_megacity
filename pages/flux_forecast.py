@@ -15,6 +15,8 @@ import geopandas as gpd
 import math
 import tempfile
 import zipfile
+import gcsfs
+import io
 from la_megacity.utils import constants as prm
 
 import logging
@@ -31,7 +33,7 @@ def init():
     try:
         # Load the merged shapefile with emissions data
         shapefile = 'census_tracts_emissions_dashboard.shp'
-        EMISSIONS_GDF = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, shapefile))
+        EMISSIONS_GDF = gpd.read_file(prm.SHAPEFILES['census_tracts_emissions_dashboard'])
         
         print("Successfully loaded emissions shapefile")
         print(f"Features loaded: {len(EMISSIONS_GDF)}")
@@ -137,18 +139,28 @@ def create_header_card_emissions():
                 ], width=10),
                 dbc.Col([
                     html.Div([
-                        dbc.Button([
-                            "Documentation ",
-                            html.I(className="fas fa-file-pdf")
-                        ], color="secondary", className="me-2", id="emissions-doc-button"),
+                        # Modified Documentation Button to link to a local PDF
+                        html.A(
+                            dbc.Button([
+                                "Documentation ",
+                                html.I(className="fas fa-file-pdf")
+                            ], color="secondary", className="me-2"),
+                            href="/assets/agent_based_model.pdf",  # <-- CHANGE THIS FILENAME
+                            target="_blank"  # Opens the PDF in a new tab
+                        ),
+                
+                        # Unchanged Help Button
                         dbc.Button([
                             "Help ",
                             html.I(className="fas fa-question-circle")
                         ], color="secondary", className="me-2", id="emissions-help-button"),
+                
+                        # Unchanged Reset Button
                         dbc.Button([
                             "Reset ",
                             html.I(className="fas fa-redo")
                         ], color="secondary", id="emissions-restart-button")
+                
                     ], className="d-flex justify-content-end")
                 ], width=2)
             ], className="align-items-center")
@@ -1336,30 +1348,47 @@ def register_callbacks(app):
         prevent_initial_call=True
     )
     def download_shapefile_zip(n_clicks):
-        """Download complete shapefile as ZIP"""
+        """Download complete shapefile as ZIP from GCS."""
         if not n_clicks:
             return None
         
         try:
-            shapefile_path = '/Users/vyadav/climate_policy/household_abm/shapefiles/census_tracts_emissions_dashboard.shp'
-            base_path = os.path.splitext(shapefile_path)[0]
-            
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
-                with zipfile.ZipFile(temp_zip.name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-                    for ext in ['.shp', '.shx', '.dbf', '.prj', '.cpg']:
-                        file_path = f"{base_path}{ext}"
-                        if os.path.exists(file_path):
-                            zf.write(file_path, f"emissions_data{ext}")
+            fs = gcsfs.GCSFileSystem()
+    
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 1. Define shapefile components and get the base GCS path from constants
+                shapefile_exts = ['.shp', '.shx', '.dbf', '.prj', '.cpg']
+                shapefile_key = 'census_tracts_emissions_dashboard'
+                # Reconstruct the base GCS path from the full .shp path in constants
+                base_gcs_path = prm.SHAPEFILES[shapefile_key].replace('.shp', '')
+    
+                # 2. Download all shapefile components from GCS to the temporary directory
+                for ext in shapefile_exts:
+                    gcs_path = base_gcs_path + ext
+                    local_path = os.path.join(temp_dir, f"{shapefile_key}{ext}")
+                    if fs.exists(gcs_path):
+                        fs.get(gcs_path, local_path)
                 
-                with open(temp_zip.name, 'rb') as f:
-                    data = f.read()
-                os.unlink(temp_zip.name)
+                # 3. Zip the downloaded files
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for root, _, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            # Use a simpler name in the zip archive
+                            arc_name = file.replace(shapefile_key, 'emissions_data')
+                            zip_file.write(file_path, arc_name)
+    
+                zip_buffer.seek(0)
                 
-                return dcc.send_bytes(data, 'emissions_shapefile.zip')
+                return dcc.send_bytes(zip_buffer.getvalue(), 'emissions_shapefile.zip')
         
         except Exception as e:
             print(f"Error in shapefile download: {e}")
             return None
+        
+        
+        
     
     @app.callback(
         Output("emissions-download-timeseries-csv", "data"),
