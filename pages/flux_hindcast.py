@@ -27,6 +27,8 @@ from la_megacity.utils import conc_func as cfunc
 import math
 import tempfile
 import zipfile
+import gcsfs
+import io
 
 
 
@@ -60,7 +62,9 @@ def init():
     
     try:
         # Load netCDF data
-        filename = os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc')
+        #filename = os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc')
+        
+        filename = prm.DATA_FILES['fluxresults1']
         data_dict = load_netcdf_data(filename)
         
         # Unpack netCDF data into global variables
@@ -79,7 +83,8 @@ def init():
         
         # Load spatial aggregation data from HDF5
         try:
-            spatial_hdf_filename = os.path.join(prm.SITE_DATA_PATH, 'spatial_data.h5')
+            #spatial_hdf_filename = os.path.join(prm.SITE_DATA_PATH, 'spatial_data.h5')
+            spatial_hdf_filename = prm.DATA_FILES['spatial_data']
             spatial_data = cfunc.load_dicts_from_hdf(spatial_hdf_filename, ['zip', 'census', 'custom'])
             
             # Store the data directly as loaded from HDF
@@ -352,18 +357,28 @@ def get_layout():
                     ], width=10),
                     dbc.Col([
                         html.Div([
-                            dbc.Button([
-                                "Documentation ",
-                                html.I(className="fas fa-file-pdf")
-                            ], color="secondary", className="me-2", id="hindcast-doc-button"),
+                            # Modified Documentation Button to act as a link
+                            html.A(
+                                dbc.Button([
+                                    "Documentation ",
+                                    html.I(className="fas fa-file-pdf")
+                                ], color="secondary", className="me-2"),
+                                href="/assets/flux_hindcast.pdf",
+                                target="_blank" # Opens the PDF in a new tab
+                            ),
+                    
+                            # Unchanged Help Button
                             dbc.Button([
                                 "Help ",
                                 html.I(className="fas fa-question-circle")
                             ], color="secondary", className="me-2", id="hindcast-help-button"),
+                    
+                            # Unchanged Reset Button
                             dbc.Button([
                                 "Reset ",
                                 html.I(className="fas fa-redo")
                             ], color="secondary", id="hindcast-restart-button")
+                            
                         ], className="d-flex justify-content-end")
                     ], width=2),
                 ], className="align-items-center"),
@@ -1008,12 +1023,14 @@ def register_callbacks(app):
                 df = spatial_data[key]
                 
                 # Get boundaries for the chosen aggregation
-                boundaries_file = {
-                    'zip': 'zip_code_socab.shp',
-                    'census': 'census_tract_clipped.shp',
-                    'custom': 'zones_partitoned.shp'
+                boundaries_key = {
+                    'zip': 'zip_code_socab',
+                    'census': 'census_tract_clipped',
+                    'custom': 'zones_partitoned'
                 }[spatial_agg]
-                boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, boundaries_file))
+                boundaries = gpd.read_file(prm.SHAPEFILES[boundaries_key])
+
+               # boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, boundaries_file))
                 
                 # Add the feature ID mapping
                 feature_id_mapping = {
@@ -1236,7 +1253,7 @@ def register_callbacks(app):
     @app.callback(
     Output('hindcast-aggregation-period-text', 'children'),
     [Input('hindcast-time-slider', 'value')]
-)
+    )
     def update_aggregation_period(time_range):
         """Update the displayed date range based on slider selection"""
         if not time_range or len(available_dates) == 0:
@@ -1306,61 +1323,83 @@ def register_callbacks(app):
         return [next_idx, next_idx], {'playing': True}
     
     @app.callback(
-        Output("hindcast-download-full-netcdf", "data"),
-        Input("hindcast-trigger-download-full-netcdf", "n_clicks"),
-        State('hindcast-spatial-agg', 'value'),
-        prevent_initial_call=True
+    Output("hindcast-download-full-netcdf", "data"),
+    Input("hindcast-trigger-download-full-netcdf", "n_clicks"),
+    State('hindcast-spatial-agg', 'value'),
+    prevent_initial_call=True
     )
     def download_full_netcdf(n_clicks, spatial_agg):
-        """Download full data - NetCDF for native resolution"""
-        if not n_clicks:
+        """Downloads the full NetCDF file from GCS to send to the user."""
+        if not n_clicks or spatial_agg != 'native':
             return None
     
         try:
-            if spatial_agg == 'native':
+            fs = gcsfs.GCSFileSystem()
+            gcs_path = prm.DATA_FILES['fluxresults1']
+    
+            # Create a temporary file to download to
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                # Download from GCS to the temporary file
+                fs.get(gcs_path, tmp.name)
+                # Send the temporary local file
                 return dcc.send_file(
-                    os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc'),
+                    tmp.name,
                     filename='fluxresults1.nc'
                 )
-            else:
-                return "NetCDF download is only available for native spatial resolution."
+                
         except Exception as e:
             print(f"Error in NetCDF download: {e}")
             return None
     
     @app.callback(
-        Output("hindcast-download-spatial-agg-zip", "data"),
-        Input("hindcast-trigger-download-spatial-agg-zip", "n_clicks"),
-        State('hindcast-spatial-agg', 'value'),
-        prevent_initial_call=True
+    Output("hindcast-download-spatial-agg-zip", "data"),
+    Input("hindcast-trigger-download-spatial-agg-zip", "n_clicks"),
+    prevent_initial_call=True
     )
-    def download_spatial_agg_zip(n_clicks, spatial_agg):
+    def download_spatial_agg_zip(n_clicks):
+        """Downloads HDF5 and all shapefiles from GCS, zips them, and sends to user."""
         if not n_clicks:
-            return None, ""
+            return None
     
         try:
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
-                with zipfile.ZipFile(temp_zip.name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-                    # Add HDF file
-                    spatial_hdf = os.path.join(prm.SITE_DATA_PATH, 'spatial_data.h5')
-                    if os.path.exists(spatial_hdf):
-                        zf.write(spatial_hdf, os.path.basename(spatial_hdf))
-                    
-                    # Add all shapefile components
-                    for base_name in ['zip_code_socab', 'census_tract_clipped', 'zones_partitoned']:
-                        for ext in ['.shp', '.shx', '.dbf', '.prj']:
-                            shapefile = os.path.join(prm.SHAPEFILE_PATH, f"{base_name}{ext}")
-                            if os.path.exists(shapefile):
-                                zf.write(shapefile, os.path.basename(shapefile))
+            fs = gcsfs.GCSFileSystem()
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 1. Download HDF5 file
+                gcs_hdf_path = prm.DATA_FILES['spatial_data']
+                local_hdf_path = os.path.join(temp_dir, 'spatial_data.h5')
+                if fs.exists(gcs_hdf_path):
+                    fs.get(gcs_hdf_path, local_hdf_path)
+    
+                # 2. Download all shapefile components
+                shapefile_keys = ['zip_code_socab', 'census_tract_clipped', 'zones_partitoned']
+                shapefile_exts = ['.shp', '.shx', '.dbf', '.prj']
                 
-                with open(temp_zip.name, 'rb') as f:
-                    data = f.read()
-                os.unlink(temp_zip.name)
+                for key in shapefile_keys:
+                    # Reconstruct the base GCS path from the full .shp path in constants
+                    base_gcs_path = prm.SHAPEFILES[key].replace('.shp', '')
+                    for ext in shapefile_exts:
+                        gcs_path = base_gcs_path + ext
+                        local_path = os.path.join(temp_dir, f"{key}{ext}")
+                        if fs.exists(gcs_path):
+                            fs.get(gcs_path, local_path)
                 
-                return dcc.send_bytes(data, 'full_spatial_data.zip')
+                # 3. Zip the downloaded files
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for root, _, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arc_name = os.path.relpath(file_path, temp_dir)
+                            zip_file.write(file_path, arc_name)
+    
+                zip_buffer.seek(0)
+                
+                return dcc.send_bytes(zip_buffer.getvalue(), 'full_spatial_data.zip')
+                
         except Exception as e:
             print(f"Error in spatial aggregation data download: {e}")
-            return None, f"Error: {e}"
+            return None
     
     @app.callback(
         Output("hindcast-download-map-current-csv", "data"),
