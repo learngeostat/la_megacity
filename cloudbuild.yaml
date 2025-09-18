@@ -3,11 +3,11 @@ steps:
   args:
   - 'build'
   - '-t'
-  - 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest' # <-- TODO: Update this line
+  - 'us-west2-docker.pkg.dev/primeval-gear-472313-v7/la-megacity/la-megacity-dashboard:latest' # <-- TODO: Update this line
   - '.'
 
 images:
-- 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest' # <-- TODO: Update this line
+- 'us-west2-docker.pkg.dev/primeval-gear-472313-v7/la-megacity/la-megacity-dashboard:latest' # <-- TODO: Update this line
 
 # This 'options' block is the fix for your error
 options:
