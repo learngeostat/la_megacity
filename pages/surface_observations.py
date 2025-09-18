@@ -321,7 +321,9 @@ def init():
         print("Initializing data dictionaries...")
         
         # Load afternoon hours data
-        hdf_filename_afternoon = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_afternoon.h5')
+        
+        #hdf_filename_afternoon = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_afternoon.h5')
+        hdf_filename_afternoon=prm.DATA_FILES['aggregated_data_afternoon']
         print(f"Loading afternoon data from: {hdf_filename_afternoon}")
         raw_dict_afternoon, bg_dict_afternoon, raw_ratio_afternoon, bg_ratio_afternoon = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_afternoon)
@@ -332,7 +334,8 @@ def init():
         print("Successfully loaded afternoon hours data")
 
         # Load all hours data
-        hdf_filename_all = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_allhours.h5')
+        hdf_filename_all = prm.DATA_FILES['aggregated_data_allhours.h5']
+        #hdf_filename_all = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_allhours.h5')
         print(f"Loading all hours data from: {hdf_filename_all}")
         raw_dict_all, bg_dict_all, raw_ratio_all, bg_ratio_all = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_all)
@@ -497,18 +500,28 @@ def create_header_card_surface():
                 ], width=10),
                 dbc.Col([
                     html.Div([
-                        dbc.Button([
-                            "Documentation ",
-                            html.I(className="fas fa-file-pdf")
-                        ], color="secondary", className="me-2", id="surface-doc-button"),
+                        # Modified Documentation Button to act as a link
+                        html.A(
+                            dbc.Button([
+                                "Documentation ",
+                                html.I(className="fas fa-file-pdf")
+                            ], color="secondary", className="me-2"),
+                            href="/assets/surface_observations.pdf",
+                            target="_blank"  # This opens the PDF in a new browser tab
+                        ),
+                        
+                        # Unchanged Help Button
                         dbc.Button([
                             "Help ",
                             html.I(className="fas fa-question-circle")
                         ], color="secondary", className="me-2", id="surface-help-button"),
+                        
+                        # Unchanged Reset Button
                         dbc.Button([
                             "Reset ",
                             html.I(className="fas fa-redo")
                         ], color="secondary", id="surface-restart-button")
+                
                     ], className="d-flex justify-content-end")
                 ], width=2)
             ], className="align-items-center")
