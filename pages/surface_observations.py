@@ -386,27 +386,33 @@ def load_data_from_gcs_hdf(gcs_path):
     return raw_data, background_data, raw_ratio_data, background_ratio_data
 
 
+
+# In surface_observations.py
+
 def init():
     """Initialize by loading pre-aggregated data and shapefiles."""
     global raw_data_dict_afternoon, background_data_dict_afternoon
     global raw_data_dict_all, background_data_dict_all
     global available_sites
-    global GEO_DF, GEO_DF2
+    global GEO_DF, GEO_DF2  # Add the new globals here
 
     try:
         logging.info("--- Initializing Surface Observations Page ---")
 
-        # ... (The shapefile loading part remains the same)
+        # Load shapefiles for the map
         try:
             logging.info("Loading shapefiles from GCS...")
-            GEO_DF = gpd.read_file(prm.SHAPEFILES['socabbound'])
-            GEO_DF2 = gpd.read_file(prm.SHAPEFILES['paper_towers'])
+            shapefile_path1 = prm.SHAPEFILES['socabbound']
+            shapefile_path2 = prm.SHAPEFILES['paper_towers']
+            GEO_DF = gpd.read_file(shapefile_path1)
+            GEO_DF2 = gpd.read_file(shapefile_path2)
             logging.info("Successfully loaded shapefiles.")
-        except Exception:
-            logging.exception("Failed to load shapefiles.")
-            GEO_DF, GEO_DF2 = None, None
+        except Exception as e:
+            logging.error(f"Failed to load shapefiles: {e}")
+            # Continue without map data if necessary, or handle as a critical error
+            GEO_DF = None
+            GEO_DF2 = None
 
-        # --- MODIFIED PART ---
         # Load afternoon hours data using the NEW function
         hdf_filename_afternoon = prm.DATA_FILES['aggregated_data_afternoon']
         raw_data_dict_afternoon, background_data_dict_afternoon, _, _ = \
@@ -418,14 +424,29 @@ def init():
         raw_data_dict_all, background_data_dict_all, _, _ = \
             load_data_from_gcs_hdf(hdf_filename_all) # <-- USE NEW FUNCTION
         logging.info("Finished loading all hours data.")
-        # --- END MODIFIED PART ---
         
-        # ... (The rest of the function remains the same)
         # Populate available sites for each gas type
         available_sites = {}
-        # ...
+        for gas in ['co2', 'ch4', 'co']:
+            sites_afternoon = set()
+            sites_all = set()
+            if gas in raw_data_dict_afternoon:
+                sites_afternoon = set(extract_sites_from_columns(raw_data_dict_afternoon[gas]['H'].columns, gas))
+            if gas in raw_data_dict_all:
+                sites_all = set(extract_sites_from_columns(raw_data_dict_all[gas]['H'].columns, gas))
+            available_sites[gas] = sorted(sites_afternoon.union(sites_all))
+            logging.info(f"Available sites for {gas}: {available_sites[gas]}")
 
-    # ... (The except block remains the same)
+        logging.info("--- Initialization Complete ---")
+        return available_sites.get('co2', [])
+
+    except Exception as e:
+        logging.exception("A critical error occurred during initialization.")
+        # Initialize empty dictionaries in case of error
+        raw_data_dict_afternoon, background_data_dict_afternoon = {}, {}
+        raw_data_dict_all, background_data_dict_all = {}, {}
+        available_sites = {'co2': [], 'ch4': [], 'co': []}
+        return []
 
 def essential_stats(data):
     """
