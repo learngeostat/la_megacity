@@ -1,4 +1,5 @@
 from dash import Dash, html, dcc, Input, Output
+import dash_bootstrap_components as dbc
 import os
 import logging
 
@@ -6,33 +7,38 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create Dash app
-app = Dash(__name__)
+# Create Dash app with Bootstrap
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# IMPORTANT: Expose Flask server for gunicorn
+# Expose Flask server
 server = app.server
 
-# Simple Dash layout
+# Bootstrap-enhanced layout
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
-    html.Div([
-        html.H1("LA Megacity - Phase 2 (Dash Test)", style={'textAlign': 'center'}),
-        html.P("Dash framework running on Cloud Run", style={'textAlign': 'center'}),
-        html.Hr(),
+    
+    # Bootstrap header
+    dbc.Container([
+        dbc.Row([
+            dbc.Col([
+                html.H1("LA Megacity - Phase 3A (Bootstrap)", className="text-center mb-4"),
+                html.P("Testing dash-bootstrap-components", className="text-center text-muted mb-4")
+            ])
+        ]),
         
-        # Simple navigation
-        html.Div([
-            html.A("Home", href="/", style={'marginRight': '20px'}),
-            html.A("Page 1", href="/page-1", style={'marginRight': '20px'}),
-            html.A("Page 2", href="/page-2")
-        ], style={'textAlign': 'center', 'marginBottom': '20px'}),
+        # Bootstrap navigation
+        dbc.Nav([
+            dbc.NavLink("Home", href="/", active="exact"),
+            dbc.NavLink("Page 1", href="/page-1", active="exact"),
+            dbc.NavLink("Page 2", href="/page-2", active="exact"),
+        ], pills=True, className="justify-content-center mb-4"),
         
-        # Content area
+        # Content
         html.Div(id="page-content")
-    ], style={'padding': '20px'})
+    ])
 ])
 
-# Simple callback for routing
+# Same callback as before
 @app.callback(
     Output("page-content", "children"),
     Input("url", "pathname")
@@ -41,34 +47,26 @@ def display_page(pathname):
     logger.info(f"Rendering page: {pathname}")
     
     if pathname == "/" or pathname is None:
-        return html.Div([
-            html.H2("Home Page"),
-            html.P("✅ Dash is working on Cloud Run!"),
-            html.P(f"Current path: {pathname or '/'}"),
-            html.P(f"Port: {os.environ.get('PORT', 'not-set')}")
+        return dbc.Card([
+            dbc.CardBody([
+                html.H3("Home - Bootstrap Working!", className="card-title"),
+                html.P("✅ dash-bootstrap-components loaded successfully", className="text-success"),
+                dbc.Alert("Phase 3A: Bootstrap components test", color="info")
+            ])
         ])
     elif pathname == "/page-1":
-        return html.Div([
-            html.H2("Page 1"),
-            html.P("This is page 1 - Dash routing works!")
-        ])
+        return dbc.Card([dbc.CardBody([html.H3("Page 1"), html.P("Bootstrap styling active")])])
     elif pathname == "/page-2":
-        return html.Div([
-            html.H2("Page 2"),
-            html.P("This is page 2 - Everything working!")
-        ])
+        return dbc.Card([dbc.CardBody([html.H3("Page 2"), html.P("All systems working")])])
     else:
-        return html.Div([
-            html.H2("404 - Not Found"),
-            html.P(f"Page '{pathname}' not found")
-        ])
+        return dbc.Alert(f"Page '{pathname}' not found", color="danger")
 
-# Health check for Cloud Run
+# Health check
 @server.route('/health')
 def health():
-    return {'status': 'healthy', 'phase': 'phase-2-dash'}, 200
+    return {'status': 'healthy', 'phase': 'phase-3a-bootstrap'}, 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting Phase 2 Dash app on port {port}")
+    logger.info(f"Starting Phase 3A Bootstrap test on port {port}")
     app.run_server(host='0.0.0.0', port=port, debug=False)
