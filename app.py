@@ -473,13 +473,13 @@ def init_app():
         else:
             logger.error(f"Overview module not loaded: {OVERVIEW_ERROR}")
         
-        if FLUX_FORECAST_MODULE_LOADED:
-            logger.info("Initializing flux_forecast module")
-            init_flux_forecast()
-            register_flux_forecast_callbacks(app)
-            logger.info("Successfully initialized flux_forecast module")
+        if EMISSIONS_MODULE_LOADED:
+            logger.info("Initializing emissions module")
+            init_emissions()
+            register_emissions_callbacks(app)
+            logger.info("Successfully initialized emissions module")
         else:
-            logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
+            logger.error(f"Emissions module not loaded: {EMISSIONS_ERROR}")
             
         if SURFACE_OBSERVATIONS_MODULE_LOADED:
             logger.info("Initializing surface_observations module")
@@ -488,6 +488,22 @@ def init_app():
             logger.info("Successfully initialized surface_observations module")
         else:
             logger.error(f"Surface observations module not loaded: {SURFACE_OBSERVATIONS_ERROR}")
+            
+        if FLUX_HINDCAST_MODULE_LOADED:
+            logger.info("Initializing flux_hindcast module")
+            init_flux_hindcast()
+            register_flux_hindcast_callbacks(app)
+            logger.info("Successfully initialized flux_hindcast module")
+        else:
+            logger.error(f"Flux hindcast module not loaded: {FLUX_HINDCAST_ERROR}")
+        
+        if FLUX_FORECAST_MODULE_LOADED:
+            logger.info("Initializing flux_forecast module")
+            init_flux_forecast()
+            register_flux_forecast_callbacks(app)
+            logger.info("Successfully initialized flux_forecast module")
+        else:
+            logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
             
         if FLUX_HINDCAST_MODULE_LOADED:
             logger.info("Initializing flux_hindcast module")
