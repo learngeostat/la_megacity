@@ -4,6 +4,11 @@ Modified Emissions Dashboard for ABM-based emissions data
 Displays census tract level emissions with temporal analysis
 """
 
+import logging
+import sys
+import traceback
+
+
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import dash
@@ -19,8 +24,16 @@ import gcsfs
 import io
 #from utils import constants as prm
 
-import logging
-logging.getLogger("fiona").disabled = True
+#import logging
+#logging.getLogger("fiona").disabled = True
+
+# Configure logging to be visible in Cloud Run
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 
 # Global variables
 EMISSIONS_GDF = None
@@ -34,21 +47,21 @@ GCS_SHAPEFILE_BASE = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_t
 def init():
     """Initialize emissions dashboard components"""
     global EMISSIONS_GDF
-    
+
     try:
-        # Load the merged shapefile with emissions data
-        #shapefile = 'census_tracts_emissions_dashboard.shp' 
+        logging.info("INIT FUNCTION: Attempting to load shapefile from GCS...")
         EMISSIONS_GDF = gpd.read_file(GCS_SHAPEFILE_PATH)
-        #EMISSIONS_GDF = gpd.read_file(prm.SHAPEFILES['census_tracts_emissions_dashboard'])
-        
-        print("Successfully loaded emissions shapefile")
-        print(f"Features loaded: {len(EMISSIONS_GDF)}")
-        print(f"Available columns: {list(EMISSIONS_GDF.columns)}")
-        
+
+        if EMISSIONS_GDF is None or EMISSIONS_GDF.empty:
+            logging.error("INIT FUNCTION: Shapefile loaded but is empty or None.")
+            return False
+
+        logging.info(f"INIT FUNCTION: Successfully loaded shapefile. Features loaded: {len(EMISSIONS_GDF)}")
         return True
-        
-    except Exception as e:
-        print(f"Error loading emissions data: {e}")
+
+    except Exception:  # Removed "as e"
+        # logging.exception automatically captures the full error details here
+        logging.exception("INIT FUNCTION: A critical error occurred while loading emissions data.")
         return False
 
 def get_column_name(display_variable, selected_year=None):
