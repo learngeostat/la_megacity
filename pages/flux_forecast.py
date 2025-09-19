@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 import gcsfs
 import io
-from utils import constants as prm
+#from utils import constants as prm
 
 import logging
 logging.getLogger("fiona").disabled = True
@@ -26,14 +26,20 @@ logging.getLogger("fiona").disabled = True
 EMISSIONS_GDF = None
 available_years = list(range(2025, 2055))
 
+GCS_SHAPEFILE_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard.shp"
+GCS_SHAPEFILE_BASE = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard"
+
+
+
 def init():
     """Initialize emissions dashboard components"""
     global EMISSIONS_GDF
     
     try:
         # Load the merged shapefile with emissions data
-        shapefile = 'census_tracts_emissions_dashboard.shp'
-        EMISSIONS_GDF = gpd.read_file(prm.SHAPEFILES['census_tracts_emissions_dashboard'])
+        #shapefile = 'census_tracts_emissions_dashboard.shp' 
+        EMISSIONS_GDF = gpd.read_file(GCS_SHAPEFILE_PATH)
+        #EMISSIONS_GDF = gpd.read_file(prm.SHAPEFILES['census_tracts_emissions_dashboard'])
         
         print("Successfully loaded emissions shapefile")
         print(f"Features loaded: {len(EMISSIONS_GDF)}")
@@ -1360,7 +1366,8 @@ def register_callbacks(app):
                 shapefile_exts = ['.shp', '.shx', '.dbf', '.prj', '.cpg']
                 shapefile_key = 'census_tracts_emissions_dashboard'
                 # Reconstruct the base GCS path from the full .shp path in constants
-                base_gcs_path = prm.SHAPEFILES[shapefile_key].replace('.shp', '')
+                #base_gcs_path = prm.SHAPEFILES[shapefile_key].replace('.shp', '')
+                base_gcs_path = GCS_SHAPEFILE_BASE
     
                 # 2. Download all shapefile components from GCS to the temporary directory
                 for ext in shapefile_exts:
