@@ -36,7 +36,7 @@ except Exception as e:
     FLUX_FORECAST_MODULE_LOADED = False
     FLUX_FORECAST_ERROR = str(e)
 
-# Import surface_observations module - NEW FOR PHASE 4F
+# Import surface_observations module - FROM PHASE 4F
 try:
     from pages.surface_observations import init as init_surface_observations
     from pages.surface_observations import get_layout as get_surface_observations_layout
@@ -46,6 +46,17 @@ try:
 except Exception as e:
     SURFACE_OBSERVATIONS_MODULE_LOADED = False
     SURFACE_OBSERVATIONS_ERROR = str(e)
+
+# Import emissions module - NEW FOR THIS UPDATE
+try:
+    from emissions import init as init_emissions
+    from emissions import get_layout as get_emissions_layout
+    from emissions import register_callbacks as register_emissions_callbacks
+    EMISSIONS_MODULE_LOADED = True
+    EMISSIONS_ERROR = None
+except Exception as e:
+    EMISSIONS_MODULE_LOADED = False
+    EMISSIONS_ERROR = str(e)
 
 # Configure logging
 logging.basicConfig(
@@ -98,12 +109,12 @@ app.layout = html.Div([
         className="mb-4"
     ),
     
-    # Status indicator
+    # Status indicator - Updated to include emissions module
     dbc.Row(
         dbc.Col(
             html.Div([
-                html.I(className=f"fas fa-{'check-circle text-success' if (OVERVIEW_MODULE_LOADED and FLUX_FORECAST_MODULE_LOADED and SURFACE_OBSERVATIONS_MODULE_LOADED) else 'exclamation-triangle text-warning'} me-2"),
-                html.Span(f"Phase 4F: Overview {'✓' if OVERVIEW_MODULE_LOADED else '✗'} | Flux Forecast {'✓' if FLUX_FORECAST_MODULE_LOADED else '✗'} | Surface Obs {'✓' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗'}", className="small")
+                html.I(className=f"fas fa-{'check-circle text-success' if (OVERVIEW_MODULE_LOADED and FLUX_FORECAST_MODULE_LOADED and SURFACE_OBSERVATIONS_MODULE_LOADED and EMISSIONS_MODULE_LOADED) else 'exclamation-triangle text-warning'} me-2"),
+                html.Span(f"System Status: Overview {'✓' if OVERVIEW_MODULE_LOADED else '✗'} | Flux Forecast {'✓' if FLUX_FORECAST_MODULE_LOADED else '✗'} | Surface Obs {'✓' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗'} | Emissions {'✓' if EMISSIONS_MODULE_LOADED else '✗'}", className="small")
             ], className="text-center mb-2")
         )
     ),
@@ -151,7 +162,7 @@ app.layout = html.Div([
     ])
 ], className="container-fluid px-4 py-3")
 
-# Update the CSS styles (same as your original)
+# CSS styles (unchanged)
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -201,6 +212,53 @@ app.index_string = '''
                 transform: translateY(-5px);
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             }
+            .panel-transition {
+                transition: all 0.3s ease-in-out;
+            }
+            .expand-control {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+            }
+            .expand-button {
+                background: #007bff;
+                border: none;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+            .expand-button:hover {
+                background: #0056b3;
+            }
+            .restore-button {
+                background: #28a745;
+                border: none;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }
+            .restore-button:hover {
+                background: #218838;
+            }
+            .time-control-overlay {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 8px;
+                padding: 10px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                z-index: 1000;
+            }
         </style>
     </head>
     <body>
@@ -229,7 +287,10 @@ def render_page_content(pathname):
             else:
                 return get_overview_error_layout()
         elif pathname == "/page-2":
-            return get_oco3_placeholder()
+            if EMISSIONS_MODULE_LOADED:
+                return get_emissions_layout()
+            else:
+                return get_emissions_error_layout()
         elif pathname == "/page-3":
             if SURFACE_OBSERVATIONS_MODULE_LOADED:
                 return get_surface_observations_layout()
@@ -261,7 +322,7 @@ def get_overview_error_layout():
             dbc.Col([
                 html.H2("Overview Page - Module Load Error", className="mb-4"),
                 dbc.Alert([
-                    html.H4("Phase 4F: Overview Module Import Failed", className="alert-heading"),
+                    html.H4("Overview Module Import Failed", className="alert-heading"),
                     html.P(f"Error loading overview module: {OVERVIEW_ERROR}"),
                     html.Hr(),
                     html.P("This indicates an issue with the overview module import structure.")
@@ -277,7 +338,7 @@ def get_flux_forecast_error_layout():
             dbc.Col([
                 html.H2("Emissions Forecast - Module Load Error", className="mb-4"),
                 dbc.Alert([
-                    html.H4("Phase 4F: Flux Forecast Module Import Failed", className="alert-heading"),
+                    html.H4("Flux Forecast Module Import Failed", className="alert-heading"),
                     html.P(f"Error loading flux_forecast module: {FLUX_FORECAST_ERROR}"),
                     html.Hr(),
                     html.P("This indicates an issue with cross-module imports or data access.")
@@ -286,14 +347,14 @@ def get_flux_forecast_error_layout():
         ])
     ])
 
-# Error layout if surface_observations module fails to load - NEW
+# Error layout if surface_observations module fails to load
 def get_surface_observations_error_layout():
     return dbc.Container([
         dbc.Row([
             dbc.Col([
                 html.H2("Surface Observations - Module Load Error", className="mb-4"),
                 dbc.Alert([
-                    html.H4("Phase 4F: Surface Observations Module Import Failed", className="alert-heading"),
+                    html.H4("Surface Observations Module Import Failed", className="alert-heading"),
                     html.P(f"Error loading surface_observations module: {SURFACE_OBSERVATIONS_ERROR}"),
                     html.Hr(),
                     html.P("This indicates an issue with:"),
@@ -304,6 +365,29 @@ def get_surface_observations_error_layout():
                         html.Li("Geometry data requirements")
                     ]),
                     html.P("Check the logs for specific import/initialization errors.")
+                ], color="danger")
+            ])
+        ])
+    ])
+
+# NEW: Error layout if emissions module fails to load
+def get_emissions_error_layout():
+    return dbc.Container([
+        dbc.Row([
+            dbc.Col([
+                html.H2("OCO-3 Observations - Module Load Error", className="mb-4"),
+                dbc.Alert([
+                    html.H4("Emissions Module Import Failed", className="alert-heading"),
+                    html.P(f"Error loading emissions module: {EMISSIONS_ERROR}"),
+                    html.Hr(),
+                    html.P("This indicates an issue with:"),
+                    html.Ul([
+                        html.Li("GCS data access permissions"),
+                        html.Li("Missing shapefile dependencies"),
+                        html.Li("OCO-3 data file availability"),
+                        html.Li("GeoPandas/spatial analysis dependencies")
+                    ]),
+                    html.P("Check the logs for specific import/initialization errors.")
                 ], color="danger"),
                 
                 # Show module status
@@ -311,11 +395,12 @@ def get_surface_observations_error_layout():
                     dbc.CardBody([
                         html.H5("Module Status Summary:"),
                         html.P(f"• Overview Module: {'✓ Loaded' if OVERVIEW_MODULE_LOADED else '✗ Failed'}"),
-                        html.P(f"• Flux Forecast Module: {'✓ Loaded' if FLUX_FORECAST_MODULE_LOADED else '✗ Failed'}"),
+                        html.P(f"• Emissions Module: {'✓ Loaded' if EMISSIONS_MODULE_LOADED else '✗ Failed'}"),
                         html.P(f"• Surface Observations Module: {'✓ Loaded' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗ Failed'}"),
+                        html.P(f"• Flux Forecast Module: {'✓ Loaded' if FLUX_FORECAST_MODULE_LOADED else '✗ Failed'}"),
                         html.Hr(),
                         html.H6("Error Details:"),
-                        html.Pre(SURFACE_OBSERVATIONS_ERROR or "No error details available", 
+                        html.Pre(EMISSIONS_ERROR or "No error details available", 
                                 style={'fontSize': '12px', 'backgroundColor': '#f8f9fa', 'padding': '10px'})
                     ])
                 ])
@@ -323,22 +408,13 @@ def get_surface_observations_error_layout():
         ])
     ])
 
-# Keep placeholder functions for other pages
-def get_oco3_placeholder():
-    return dbc.Container([
-        html.H2("OCO-3 Satellite Observations", className="mb-4"),
-        dbc.Alert([
-            html.H4("Phase 4F: Placeholder Page"),
-            html.P(f"Module Status: Overview {'✓' if OVERVIEW_MODULE_LOADED else '✗'} | Flux Forecast {'✓' if FLUX_FORECAST_MODULE_LOADED else '✗'} | Surface Obs {'✓' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗'}"),
-            html.P("This page will be enabled in a future phase")
-        ], color="info")
-    ])
-
+# Keep placeholder function for hindcast page
 def get_hindcast_placeholder():
     return dbc.Container([
         html.H2("Emissions Analysis (Hindcast/Nowcast)", className="mb-4"),
         dbc.Alert([
-            html.H4("Phase 4F: Placeholder Page"),
+            html.H4("Placeholder Page"),
+            html.P(f"Module Status: Overview {'✓' if OVERVIEW_MODULE_LOADED else '✗'} | Emissions {'✓' if EMISSIONS_MODULE_LOADED else '✗'} | Surface Obs {'✓' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗'} | Flux Forecast {'✓' if FLUX_FORECAST_MODULE_LOADED else '✗'}"),
             html.P("This page will be enabled in a future phase")
         ], color="info")
     ])
@@ -370,6 +446,14 @@ def init_app():
             logger.info("Successfully initialized surface_observations module")
         else:
             logger.error(f"Surface observations module not loaded: {SURFACE_OBSERVATIONS_ERROR}")
+            
+        if EMISSIONS_MODULE_LOADED:
+            logger.info("Initializing emissions module")
+            init_emissions()
+            register_emissions_callbacks(app)
+            logger.info("Successfully initialized emissions module")
+        else:
+            logger.error(f"Emissions module not loaded: {EMISSIONS_ERROR}")
     except Exception as e:
         logger.error(f"Error initializing modules: {e}")
 
@@ -383,18 +467,20 @@ def init_pathname(pathname):
         return "/page-1"
     return pathname
 
-# Health check endpoint
+# Health check endpoint - Updated to include emissions module status
 @server.route('/health')
 def health_check():
     return {
         'status': 'healthy',
-        'phase': 'phase-4f-surface-observations',
+        'phase': 'updated-with-emissions-module',
         'overview_module_loaded': OVERVIEW_MODULE_LOADED,
-        'flux_forecast_module_loaded': FLUX_FORECAST_MODULE_LOADED,
+        'emissions_module_loaded': EMISSIONS_MODULE_LOADED,
         'surface_observations_module_loaded': SURFACE_OBSERVATIONS_MODULE_LOADED,
+        'flux_forecast_module_loaded': FLUX_FORECAST_MODULE_LOADED,
         'overview_error': OVERVIEW_ERROR,
-        'flux_forecast_error': FLUX_FORECAST_ERROR,
+        'emissions_error': EMISSIONS_ERROR,
         'surface_observations_error': SURFACE_OBSERVATIONS_ERROR,
+        'flux_forecast_error': FLUX_FORECAST_ERROR,
         'dependencies_loaded': True
     }, 200
 
@@ -403,17 +489,20 @@ init_app()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting Phase 4F with surface observations on port {port}")
+    logger.info(f"Starting LA Megacity Dashboard with emissions module on port {port}")
     logger.info(f"Overview module loaded: {OVERVIEW_MODULE_LOADED}")
-    logger.info(f"Flux forecast module loaded: {FLUX_FORECAST_MODULE_LOADED}")
+    logger.info(f"Emissions module loaded: {EMISSIONS_MODULE_LOADED}")
     logger.info(f"Surface observations module loaded: {SURFACE_OBSERVATIONS_MODULE_LOADED}")
+    logger.info(f"Flux forecast module loaded: {FLUX_FORECAST_MODULE_LOADED}")
     
     if OVERVIEW_ERROR:
         logger.error(f"Overview module error: {OVERVIEW_ERROR}")
-    if FLUX_FORECAST_ERROR:
-        logger.error(f"Flux forecast module error: {FLUX_FORECAST_ERROR}")
+    if EMISSIONS_ERROR:
+        logger.error(f"Emissions module error: {EMISSIONS_ERROR}")
     if SURFACE_OBSERVATIONS_ERROR:
         logger.error(f"Surface observations module error: {SURFACE_OBSERVATIONS_ERROR}")
+    if FLUX_FORECAST_ERROR:
+        logger.error(f"Flux forecast module error: {FLUX_FORECAST_ERROR}")
     
     app.run_server(
         host='0.0.0.0',
