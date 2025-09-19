@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import geopandas as gpd # Make sure this import is at the top of the file
 from dash import html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
 import dash
@@ -16,8 +17,22 @@ from astropy.stats import median_absolute_deviation
 import pyperclip
 from dash.exceptions import PreventUpdate
 
+import logging
+import sys
+
+# Configure logging to be visible in Cloud Run
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 GCS_AFTERNOON_DATA = "gs://la-megacity-dashboard-data-1/data/hdf_files/aggregated_data_afternoon.h5"
 GCS_ALL_HOURS_DATA = "gs://la-megacity-dashboard-data-1/data/hdf_files/aggregated_data_allhours.h5"
+
+
+GEO_DF = None
+GEO_DF2 = None
 
 
 # Global dictionaries for afternoon hours data
@@ -313,74 +328,68 @@ def create_stats_modal():
         is_open=False,
     )
 
+
 def init():
-    """Initialize by loading pre-aggregated data from HDF5 files for both hour types"""
+    """Initialize by loading pre-aggregated data and shapefiles."""
     global raw_data_dict_afternoon, background_data_dict_afternoon
     global raw_data_dict_all, background_data_dict_all
     global available_sites
-    
+    global GEO_DF, GEO_DF2  # Add the new globals here
+
     try:
-        print("Initializing data dictionaries...")
-        
+        logging.info("Initializing data dictionaries...")
+
+        # Load shapefiles for the map
+        try:
+            logging.info("Loading shapefiles from GCS...")
+            shapefile_path1 = prm.SHAPEFILES['socabbound']
+            shapefile_path2 = prm.SHAPEFILES['paper_towers']
+            GEO_DF = gpd.read_file(shapefile_path1)
+            GEO_DF2 = gpd.read_file(shapefile_path2)
+            logging.info("Successfully loaded shapefiles.")
+        except Exception as e:
+            logging.error(f"Failed to load shapefiles: {e}")
+            # Continue without map data if necessary, or handle as a critical error
+            GEO_DF = None
+            GEO_DF2 = None
+
         # Load afternoon hours data
-        
-        #hdf_filename_afternoon = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_afternoon.h5')
-        
-        
-        hdf_filename_afternoon=prm.DATA_FILES['aggregated_data_afternoon']
-        print(f"Loading afternoon data from: {hdf_filename_afternoon}")
-        raw_dict_afternoon, bg_dict_afternoon, raw_ratio_afternoon, bg_ratio_afternoon = \
+        hdf_filename_afternoon = prm.DATA_FILES['aggregated_data_afternoon']
+        logging.info(f"Loading afternoon data from: {hdf_filename_afternoon}")
+        raw_dict_afternoon, bg_dict_afternoon, _, _ = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_afternoon)
-            
-        # Explicitly assign to global variables
         raw_data_dict_afternoon = raw_dict_afternoon
         background_data_dict_afternoon = bg_dict_afternoon
-        print("Successfully loaded afternoon hours data")
+        logging.info("Successfully loaded afternoon hours data.")
 
         # Load all hours data
         hdf_filename_all = prm.DATA_FILES['aggregated_data_allhours.h5']
-        #hdf_filename_all = os.path.join(prm.SITE_DATA_PATH, 'aggregated_data_allhours.h5')
-        print(f"Loading all hours data from: {hdf_filename_all}")
-        raw_dict_all, bg_dict_all, raw_ratio_all, bg_ratio_all = \
+        logging.info(f"Loading all hours data from: {hdf_filename_all}")
+        raw_dict_all, bg_dict_all, _, _ = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_all)
-            
-        # Explicitly assign to global variables
         raw_data_dict_all = raw_dict_all
         background_data_dict_all = bg_dict_all
-        print("Successfully loaded all hours data")
+        logging.info("Successfully loaded all hours data.")
 
-        # Initialize available_sites dictionary
-        available_sites = {}
-        
         # Populate available sites for each gas type
+        available_sites = {}
         for gas in ['co2', 'ch4', 'co']:
-            # Check in both afternoon and all hours data
             sites_afternoon = set()
             sites_all = set()
-            
             if gas in raw_data_dict_afternoon:
-                hourly_data = raw_data_dict_afternoon[gas]['H']
-                sites_afternoon = set(extract_sites_from_columns(hourly_data.columns, gas))
-                
+                sites_afternoon = set(extract_sites_from_columns(raw_data_dict_afternoon[gas]['H'].columns, gas))
             if gas in raw_data_dict_all:
-                hourly_data = raw_data_dict_all[gas]['H']
-                sites_all = set(extract_sites_from_columns(hourly_data.columns, gas))
-            
-            # Combine sites from both datasets
+                sites_all = set(extract_sites_from_columns(raw_data_dict_all[gas]['H'].columns, gas))
             available_sites[gas] = sorted(sites_afternoon.union(sites_all))
-            print(f"Available sites for {gas}: {available_sites[gas]}")
+            logging.info(f"Available sites for {gas}: {available_sites[gas]}")
 
         return available_sites.get('co2', [])
-        
+
     except Exception as e:
-        print(f"Error in init: {e}")
-        import traceback
-        traceback.print_exc()
+        logging.exception("A critical error occurred during initialization.")
         # Initialize empty dictionaries in case of error
-        raw_data_dict_afternoon = {}
-        background_data_dict_afternoon = {}
-        raw_data_dict_all = {}
-        background_data_dict_all = {}
+        raw_data_dict_afternoon, background_data_dict_afternoon = {}, {}
+        raw_data_dict_all, background_data_dict_all = {}, {}
         available_sites = {'co2': [], 'ch4': [], 'co': []}
         return []
 
@@ -1207,8 +1216,8 @@ def update_surface_figures(selected_gas, selected_sites, analysis_type, time_agg
 
         # Create map figure with state persistence
         map_fig, updated_map_state = pfigure.site_ioami_map(
-            full_geometry=prm.geo_df,
-            half_geometry=prm.geo_df2,
+            full_geometry=GEO_DF,   # <--- CORRECTED
+            half_geometry=GEO_DF2,  # <--- CORRECTED
             selected_sites=selected_sites,
             relayoutData=relayoutData,
             map_state=map_state
