@@ -10,7 +10,7 @@ logging.getLogger("fiona").disabled = True
 #socket.gethostbyname = lambda x: '127.0.0.1'
 
 # Add the project root directory to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Now import the local modules
 from la_megacity.pages.emissions import init as init_emissions
