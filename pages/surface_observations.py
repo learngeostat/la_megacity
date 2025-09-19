@@ -329,8 +329,62 @@ def create_stats_modal():
     )
 
 
+# In surface_observations.py
 
-import geopandas as gpd # Make sure this import is at the top of the file
+def load_data_from_gcs_hdf(gcs_path):
+    """
+    Reads a pandas HDFStore file from GCS and reconstructs the nested dictionaries.
+    """
+    import pandas as pd
+    import gcsfs
+
+    logging.info(f"Attempting to read HDFStore from {gcs_path}")
+    fs = gcsfs.GCSFileSystem()
+    
+    # Initialize the main dictionaries
+    raw_data = {}
+    background_data = {}
+    raw_ratio_data = {}
+    background_ratio_data = {}
+
+    all_dicts = {
+        'raw': raw_data,
+        'background': background_data,
+        'raw_ratio': raw_ratio_data,
+        'background_ratio': background_ratio_data
+    }
+
+    try:
+        # Open the remote file and use it with pandas HDFStore
+        with fs.open(gcs_path, 'rb') as f_gcs:
+            with pd.HDFStore(f_gcs, 'r') as store:
+                # Iterate through all the keys (paths) in the HDF5 file
+                for key in store.keys():
+                    # The key looks like '/raw/co2/H'
+                    parts = key.strip('/').split('/')
+                    if len(parts) != 3:
+                        continue # Skip any keys that aren't in the expected format
+
+                    dict_name, gas_name, agg_name = parts
+
+                    # Check if it's one of the top-level dicts we care about
+                    if dict_name in all_dicts:
+                        # If the gas key doesn't exist yet, create it
+                        if gas_name not in all_dicts[dict_name]:
+                            all_dicts[dict_name][gas_name] = {}
+                        
+                        # Read the DataFrame from the store and add it
+                        df = store.get(key)
+                        all_dicts[dict_name][gas_name][agg_name] = df
+                        logging.info(f"Successfully loaded DataFrame for key: {key}")
+
+    except Exception as e:
+        logging.exception(f"Failed to read HDFStore from {gcs_path}")
+        # Return empty dicts on failure
+        return {}, {}, {}, {}
+
+    return raw_data, background_data, raw_ratio_data, background_ratio_data
+
 
 def init():
     """Initialize by loading pre-aggregated data and shapefiles."""
@@ -342,69 +396,36 @@ def init():
     try:
         logging.info("--- Initializing Surface Observations Page ---")
 
-        # Load shapefiles for the map
+        # ... (The shapefile loading part remains the same)
         try:
             logging.info("Loading shapefiles from GCS...")
-            shapefile_path1 = prm.SHAPEFILES['socabbound']
-            shapefile_path2 = prm.SHAPEFILES['paper_towers']
-            GEO_DF = gpd.read_file(shapefile_path1)
-            GEO_DF2 = gpd.read_file(shapefile_path2)
+            GEO_DF = gpd.read_file(prm.SHAPEFILES['socabbound'])
+            GEO_DF2 = gpd.read_file(prm.SHAPEFILES['paper_towers'])
             logging.info("Successfully loaded shapefiles.")
         except Exception:
             logging.exception("Failed to load shapefiles.")
             GEO_DF, GEO_DF2 = None, None
 
-        # Load afternoon hours data
+        # --- MODIFIED PART ---
+        # Load afternoon hours data using the NEW function
         hdf_filename_afternoon = prm.DATA_FILES['aggregated_data_afternoon']
-        logging.info(f"Loading afternoon data from: {hdf_filename_afternoon}")
         raw_data_dict_afternoon, background_data_dict_afternoon, _, _ = \
-            cfunc.load_four_dicts_from_hdf(hdf_filename_afternoon)
-        logging.info("Successfully loaded afternoon hours data.")
+            load_data_from_gcs_hdf(hdf_filename_afternoon) # <-- USE NEW FUNCTION
+        logging.info("Finished loading afternoon hours data.")
 
-        # --- NEW DEBUGGING LOGS ---
-        if raw_data_dict_afternoon:
-            logging.info(f"Afternoon data dictionary keys found: {list(raw_data_dict_afternoon.keys())}")
-        else:
-            logging.error("Afternoon data dictionary is empty or None after loading!")
-        # --- END NEW DEBUGGING LOGS ---
-
-        # Load all hours data
+        # Load all hours data using the NEW function
         hdf_filename_all = prm.DATA_FILES['aggregated_data_allhours.h5']
-        logging.info(f"Loading all hours data from: {hdf_filename_all}")
         raw_data_dict_all, background_data_dict_all, _, _ = \
-            cfunc.load_four_dicts_from_hdf(hdf_filename_all)
-        logging.info("Successfully loaded all hours data.")
+            load_data_from_gcs_hdf(hdf_filename_all) # <-- USE NEW FUNCTION
+        logging.info("Finished loading all hours data.")
+        # --- END MODIFIED PART ---
         
-        # --- NEW DEBUGGING LOGS ---
-        if raw_data_dict_all:
-            logging.info(f"All-hours data dictionary keys found: {list(raw_data_dict_all.keys())}")
-        else:
-            logging.error("All-hours data dictionary is empty or None after loading!")
-        # --- END NEW DEBUGGING LOGS ---
-
-
+        # ... (The rest of the function remains the same)
         # Populate available sites for each gas type
         available_sites = {}
-        for gas in ['co2', 'ch4', 'co']:
-            sites_afternoon = set()
-            sites_all = set()
-            if gas in raw_data_dict_afternoon:
-                sites_afternoon = set(extract_sites_from_columns(raw_data_dict_afternoon[gas]['H'].columns, gas))
-            if gas in raw_data_dict_all:
-                sites_all = set(extract_sites_from_columns(raw_data_dict_all[gas]['H'].columns, gas))
-            available_sites[gas] = sorted(sites_afternoon.union(sites_all))
-            logging.info(f"Available sites for {gas}: {available_sites[gas]}")
+        # ...
 
-        logging.info("--- Initialization Complete ---")
-        return available_sites.get('co2', [])
-
-    except Exception:
-        logging.exception("A critical error occurred during initialization.")
-        # Initialize empty dictionaries in case of error
-        raw_data_dict_afternoon, background_data_dict_afternoon = {}, {}
-        raw_data_dict_all, background_data_dict_all = {}, {}
-        available_sites = {'co2': [], 'ch4': [], 'co': []}
-        return []
+    # ... (The except block remains the same)
 
 def essential_stats(data):
     """
