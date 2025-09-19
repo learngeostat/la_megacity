@@ -1,264 +1,350 @@
-from dash import Dash, html, dcc, Input, Output, dash_table
+from dash import Dash, html, dcc, Input, Output
 import dash_bootstrap_components as dbc
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import os
 import logging
+import sys
 
-# Keep the working geospatial libraries
+# All working dependencies from Phase 3
 import geopandas as gpd
-import fiona
-import pyproj
-import shapely
-from shapely.geometry import Point
-import rasterio
-
-# Test scientific data libraries - this is the new critical test
-scientific_libs = {}
-scientific_errors = {}
-
-try:
-    import xarray as xr
-    scientific_libs['xarray'] = xr.__version__
-except Exception as e:
-    scientific_errors['xarray'] = str(e)
-
-try:
-    import netCDF4 as nc4
-    scientific_libs['netcdf4'] = nc4.__version__
-except Exception as e:
-    scientific_errors['netcdf4'] = str(e)
-
-try:
-    import h5py
-    scientific_libs['h5py'] = h5py.__version__
-except Exception as e:
-    scientific_errors['h5py'] = str(e)
-
-try:
-    import tables
-    scientific_libs['tables'] = tables.__version__
-except Exception as e:
-    scientific_errors['tables'] = str(e)
-
-try:
-    import scipy
-    scientific_libs['scipy'] = scipy.__version__
-except Exception as e:
-    scientific_errors['scipy'] = str(e)
-
-try:
-    import astropy
-    scientific_libs['astropy'] = astropy.__version__
-except Exception as e:
-    scientific_errors['astropy'] = str(e)
-
-try:
-    import statsmodels
-    scientific_libs['statsmodels'] = statsmodels.__version__
-except Exception as e:
-    scientific_errors['statsmodels'] = str(e)
-
-try:
-    import gcsfs
-    scientific_libs['gcsfs'] = gcsfs.__version__
-except Exception as e:
-    scientific_errors['gcsfs'] = str(e)
+import xarray as xr
+import scipy
+import astropy
+import statsmodels
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
-# Create Dash app
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+# Initialize the app with both Bootstrap and Font Awesome
+external_stylesheets = [
+    dbc.themes.LUX,
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+]
+
+app = Dash(__name__, 
+           external_stylesheets=external_stylesheets, 
+           use_pages=False,
+           pages_folder="",
+           suppress_callback_exceptions=True)
+
+# CRITICAL: Make server accessible at module level for deployment
 server = app.server
 
-# Test scientific data functionality
-SCIENTIFIC_DATA_READY = False
-SCIENTIFIC_DATA_ERROR = None
-
-try:
-    if 'xarray' in scientific_libs and 'numpy' in [pkg for pkg in ['numpy']]:
-        # Create sample xarray dataset
-        time = pd.date_range('2023-01-01', periods=12, freq='M')
-        lat = np.linspace(33.5, 34.5, 10)  # LA area latitudes
-        lon = np.linspace(-118.8, -117.8, 10)  # LA area longitudes
-        
-        # Create synthetic CO2 concentration data
-        np.random.seed(42)
-        data = np.random.normal(415, 5, (12, 10, 10))  # CO2 concentrations around 415 ppm
-        
-        ds = xr.Dataset({
-            'co2_concentration': (['time', 'lat', 'lon'], data)
-        }, coords={
-            'time': time,
-            'lat': lat,
-            'lon': lon
-        })
-        
-        SCIENTIFIC_DATA_READY = True
-        sample_dataset = ds
-except Exception as e:
-    SCIENTIFIC_DATA_ERROR = str(e)
-
+# Main app layout matching your original structure
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     
-    dbc.Container([
-        dbc.Row([
-            dbc.Col([
-                html.H1("LA Megacity - Phase 3E (Scientific Data)", className="text-center mb-4"),
-                html.P("Testing scientific data libraries: xarray, netcdf4, h5py, tables, scipy, astropy, statsmodels, gcsfs", 
-                       className="text-center text-muted mb-4")
-            ])
-        ]),
-        
-        # Status indicators
-        dbc.Row([
-            dbc.Col([
-                dbc.Alert([
-                    html.H5("Scientific Libraries Status:", className="mb-2"),
-                    html.P(f"Loaded: {len(scientific_libs)} / {len(scientific_libs) + len(scientific_errors)}", className="mb-1"),
-                    html.P(f"Data Ready: {SCIENTIFIC_DATA_READY}", className="mb-1"),
-                    html.P(f"Errors: {len(scientific_errors)}", className="mb-0")
-                ], color="success" if len(scientific_errors) == 0 else "warning")
-            ])
-        ], className="mb-4"),
-        
-        dbc.Nav([
-            dbc.NavLink("Status", href="/", active="exact"),
-            dbc.NavLink("Library Details", href="/details", active="exact"),
-            dbc.NavLink("Data Test", href="/datatest", active="exact"),
-            dbc.NavLink("Memory Info", href="/memory", active="exact"),
-        ], pills=True, className="justify-content-center mb-4"),
-        
-        html.Div(id="page-content")
+    # Hero Section with Header
+    dbc.Row(
+        dbc.Col(
+            html.Div([
+                html.H1(
+                    [
+                        html.I(className="fas fa-city me-3"),
+                        "Los Angeles Megacity",
+                        html.Br(),
+                        "Greenhouse Gas Information System"
+                    ],
+                    className="text-center text-white mb-4",
+                    style={"fontSize": "2.5rem", "fontWeight": "600"}
+                ),
+                html.P(
+                    "Monitoring and analyzing greenhouse gas emissions across the Los Angeles metropolitan area",
+                    className="text-center text-white mb-0",
+                    style={"fontSize": "1.2rem", "opacity": "0.9"}
+                )
+            ], className="hero-section")
+        ),
+        className="mb-4"
+    ),
+    
+    # Status indicator
+    dbc.Row(
+        dbc.Col(
+            html.Div([
+                html.I(className="fas fa-check-circle text-success me-2"),
+                html.Span("Phase 4A: All dependencies loaded successfully", className="small")
+            ], className="text-center mb-2")
+        )
+    ),
+    
+    # Horizontal Navigation Tabs
+    dbc.Row(
+        dbc.Col(
+            dbc.Nav([
+                dbc.NavLink([
+                    html.I(className="fas fa-bars me-2"),
+                    "Overview"
+                ], href="/page-1", active="exact", className="px-4"),
+                
+                dbc.NavLink([
+                    html.I(className="fas fa-satellite me-2"),
+                    "OCO-3 Observations"
+                ], href="/page-2", active="exact", className="px-4"),
+                
+                dbc.NavLink([
+                    html.I(className="fas fa-tower-observation me-2"),
+                    "Surface Observations"
+                ], href="/page-3", active="exact", className="px-4"),
+                
+                dbc.NavLink([
+                    html.I(className="fas fa-chart-line me-2"),
+                    "Emissions (Hindcast/Nowcast)"
+                ], href="/page-4", active="exact", className="px-4"),
+                
+                dbc.NavLink([
+                    html.I(className="fas fa-chart-line me-2"),
+                    "Emissions (Forecast)"
+                ], href="/page-5", active="exact", className="px-4"),
+            ],
+            pills=True,
+            className="nav-pills-horizontal mb-4"),
+            className="d-flex justify-content-center"
+        )
+    ),
+    
+    # Main Content - Full Width
+    dbc.Row([
+        dbc.Col([
+            html.Div(id="page-content")
+        ], width=12)
     ])
-])
+], className="container-fluid px-4 py-3")
 
+# Update the CSS styles (same as your original)
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>LA Megacity GHG System</title>
+        {%favicon%}
+        {%css%}
+        <!-- Add Font Awesome CSS -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        <style>
+            .nav-pills-horizontal {
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                padding: 0.5rem;
+            }
+            .nav-pills-horizontal .nav-link {
+                color: #495057;
+                transition: all 0.3s ease;
+                border-radius: 5px;
+                margin: 0 0.25rem;
+                padding: 0.75rem 1.5rem;
+                font-size: 1rem;
+            }
+            .nav-pills-horizontal .nav-link:hover {
+                background-color: #e9ecef;
+                transform: translateY(-2px);
+            }
+            .nav-pills-horizontal .nav-link.active {
+                background-color: #6c757d;
+                color: white;
+            }
+            .hero-section {
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                padding: 2rem;
+                border-radius: 0 0 20px 20px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .content-card {
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                transition: all 0.3s ease;
+            }
+            .content-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
+# Callback to handle page routing
 @app.callback(
     Output("page-content", "children"),
     Input("url", "pathname")
 )
-def display_page(pathname):
-    logger.info(f"Rendering page: {pathname}")
-    
-    if pathname == "/" or pathname is None:
-        return dbc.Card([
-            dbc.CardBody([
-                html.H3("Scientific Data Libraries Test", className="card-title"),
-                html.Hr(),
-                html.H5("Successfully Loaded:"),
-                html.Div([
-                    html.P(f"• {lib}: {version}") for lib, version in scientific_libs.items()
-                ] if scientific_libs else [html.P("No libraries loaded successfully")]),
-                html.Hr(),
-                html.H5("Failed to Load:"),
-                html.Div([
-                    html.P(f"• {lib}: {error}", className="text-danger") for lib, error in scientific_errors.items()
-                ] if scientific_errors else [html.P("All libraries loaded successfully", className="text-success")]),
-                html.Hr(),
-                html.H5("Geospatial Libraries (from Phase 3D):"),
-                html.P("• All geospatial libraries still working", className="text-success"),
-                html.Hr(),
-                html.P(f"Scientific data processing: {'Working' if SCIENTIFIC_DATA_READY else 'Failed'}")
-            ])
-        ])
-    
-    elif pathname == "/details":
-        return dbc.Card([
-            dbc.CardBody([
-                html.H3("Detailed Library Information"),
-                
-                html.H5("Working Libraries:", className="mt-4"),
-                dash_table.DataTable(
-                    data=[{"Library": lib, "Version": version, "Status": "Success"} 
-                          for lib, version in scientific_libs.items()],
-                    columns=[{"name": "Library", "id": "Library"}, 
-                            {"name": "Version", "id": "Version"},
-                            {"name": "Status", "id": "Status"}],
-                    style_cell={'textAlign': 'left'}
-                ) if scientific_libs else html.P("No working libraries"),
-                
-                html.H5("Failed Libraries:", className="mt-4"),
-                dash_table.DataTable(
-                    data=[{"Library": lib, "Error": error[:100] + "..." if len(error) > 100 else error} 
-                          for lib, error in scientific_errors.items()],
-                    columns=[{"name": "Library", "id": "Library"}, 
-                            {"name": "Error", "id": "Error"}],
-                    style_cell={'textAlign': 'left', 'whiteSpace': 'normal'}
-                ) if scientific_errors else html.P("No failed libraries", className="text-success")
-            ])
-        ])
-    
-    elif pathname == "/datatest":
-        if not SCIENTIFIC_DATA_READY:
-            return dbc.Alert(f"Scientific data processing failed: {SCIENTIFIC_DATA_ERROR}", color="danger")
+def render_page_content(pathname):
+    try:
+        logger.info(f"Rendering page: {pathname}")
         
-        # Show xarray dataset info
-        return dbc.Card([
-            dbc.CardBody([
-                html.H3("XArray Dataset Test"),
-                html.P(f"Dataset dimensions: {dict(sample_dataset.dims)}"),
-                html.P(f"Data variables: {list(sample_dataset.data_vars)}"),
-                html.P(f"Coordinates: {list(sample_dataset.coords)}"),
-                html.Hr(),
-                html.H5("Sample CO2 Data (first time slice):"),
-                dash_table.DataTable(
-                    data=sample_dataset.co2_concentration.isel(time=0).to_pandas().reset_index().head(20).to_dict('records'),
-                    columns=[{"name": i, "id": i} for i in ['lat', 'lon', 'co2_concentration']],
-                    style_cell={'textAlign': 'left'}
-                ),
-                html.Hr(),
-                html.P(f"Mean CO2 concentration: {float(sample_dataset.co2_concentration.mean()):.2f} ppm"),
-                html.P(f"Dataset size: {sample_dataset.nbytes / 1024:.1f} KB")
+        if pathname == "/page-1" or pathname == "/" or not pathname:
+            return get_overview_placeholder()
+        elif pathname == "/page-2":
+            return get_oco3_placeholder()
+        elif pathname == "/page-3":
+            return get_surface_placeholder()
+        elif pathname == "/page-4":
+            return get_hindcast_placeholder()
+        elif pathname == "/page-5":
+            return get_forecast_placeholder()
+        else:
+            return html.Div([
+                html.H1("404: Not found", className="text-danger"),
+                html.P(f"The pathname {pathname} was not recognised...")
             ])
+    except Exception as e:
+        logger.error(f"Error rendering page {pathname}: {str(e)}")
+        return html.Div([
+            html.H1("Error", className="text-danger"),
+            html.P(f"An error occurred: {str(e)}")
         ])
-    
-    elif pathname == "/memory":
-        import psutil
-        import gc
-        
-        # Get memory info
-        process = psutil.Process()
-        memory_info = process.memory_info()
-        
-        return dbc.Card([
-            dbc.CardBody([
-                html.H3("Memory Usage Information"),
-                html.P(f"RSS Memory: {memory_info.rss / 1024 / 1024:.1f} MB"),
-                html.P(f"VMS Memory: {memory_info.vms / 1024 / 1024:.1f} MB"),
-                html.P(f"Available System Memory: {psutil.virtual_memory().available / 1024 / 1024:.1f} MB"),
-                html.P(f"Memory Usage %: {psutil.virtual_memory().percent:.1f}%"),
-                html.Hr(),
-                html.P(f"Loaded scientific libraries: {len(scientific_libs)}"),
-                html.P(f"Failed libraries: {len(scientific_errors)}"),
-                html.Hr(),
-                html.Small("This helps identify if memory issues are causing import failures")
-            ])
-        ])
-    
-    else:
-        return dbc.Alert(f"Page '{pathname}' not found", color="danger")
 
+# Placeholder page functions - identical structure to your original but with simple content
+def get_overview_placeholder():
+    return dbc.Container([
+        dbc.Row([
+            dbc.Col([
+                html.H2("Overview Dashboard", className="mb-4"),
+                dbc.Alert([
+                    html.H4("Phase 4A: Base Structure Working", className="alert-heading"),
+                    html.P("All dependencies loaded successfully. This page will contain:"),
+                    html.Ul([
+                        html.Li("System status indicators"),
+                        html.Li("Recent data summary"),
+                        html.Li("Quick navigation cards"),
+                        html.Li("Key metrics overview")
+                    ])
+                ], color="success"),
+                
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Dependencies Status", className="card-title"),
+                                html.P("✅ All scientific libraries loaded"),
+                                html.P("✅ Geospatial libraries working"),
+                                html.P("✅ Visualization ready")
+                            ])
+                        ])
+                    ], width=6),
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Next Steps", className="card-title"),
+                                html.P("Ready to add real functionality"),
+                                html.P("Will enable pages incrementally"),
+                                html.P("Phase 4B: Enable this page next")
+                            ])
+                        ])
+                    ], width=6)
+                ])
+            ])
+        ])
+    ])
+
+def get_oco3_placeholder():
+    return dbc.Container([
+        html.H2("OCO-3 Satellite Observations", className="mb-4"),
+        dbc.Alert([
+            html.H4("Phase 4A: Placeholder Page"),
+            html.P("This page will contain:"),
+            html.Ul([
+                html.Li("OCO-3 satellite data visualization"),
+                html.Li("CO2 concentration maps"),
+                html.Li("Time series analysis"),
+                html.Li("Data filtering and selection tools")
+            ])
+        ], color="info")
+    ])
+
+def get_surface_placeholder():
+    return dbc.Container([
+        html.H2("Surface Observations", className="mb-4"),
+        dbc.Alert([
+            html.H4("Phase 4A: Placeholder Page"),
+            html.P("This page will contain:"),
+            html.Ul([
+                html.Li("Ground-based measurement data"),
+                html.Li("Station network visualization"),
+                html.Li("Real-time monitoring displays"),
+                html.Li("Data quality indicators")
+            ])
+        ], color="info")
+    ])
+
+def get_hindcast_placeholder():
+    return dbc.Container([
+        html.H2("Emissions Analysis (Hindcast/Nowcast)", className="mb-4"),
+        dbc.Alert([
+            html.H4("Phase 4A: Placeholder Page"),
+            html.P("This page will contain:"),
+            html.Ul([
+                html.Li("Historical emissions analysis"),
+                html.Li("Current emissions estimates"),
+                html.Li("Flux calculation results"),
+                html.Li("Uncertainty analysis")
+            ])
+        ], color="info")
+    ])
+
+def get_forecast_placeholder():
+    return dbc.Container([
+        html.H2("Emissions Forecast", className="mb-4"),
+        dbc.Alert([
+            html.H4("Phase 4A: Placeholder Page"),
+            html.P("This page will contain:"),
+            html.Ul([
+                html.Li("Future emissions projections"),
+                html.Li("Scenario modeling"),
+                html.Li("Forecast confidence intervals"),
+                html.Li("Model validation metrics")
+            ])
+        ], color="info")
+    ])
+
+# URL redirect callback
+@app.callback(
+    Output("url", "pathname"),
+    Input("url", "pathname")
+)
+def init_pathname(pathname):
+    if pathname == "/" or not pathname:
+        return "/page-1"
+    return pathname
+
+# Health check endpoint
 @server.route('/health')
-def health():
+def health_check():
     return {
-        'status': 'healthy', 
-        'phase': 'phase-3e-scientific',
-        'scientific_libs_loaded': len(scientific_libs),
-        'scientific_libs_failed': len(scientific_errors),
-        'scientific_data_ready': SCIENTIFIC_DATA_READY,
-        'failed_libraries': list(scientific_errors.keys())
+        'status': 'healthy',
+        'phase': 'phase-4a-base-structure',
+        'pages': ['overview', 'oco3', 'surface', 'hindcast', 'forecast'],
+        'dependencies_loaded': True
     }, 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting Phase 3E scientific libraries test on port {port}")
-    logger.info(f"Scientific libraries loaded: {len(scientific_libs)}")
-    logger.info(f"Scientific libraries failed: {len(scientific_errors)}")
-    if scientific_errors:
-        logger.error(f"Failed libraries: {list(scientific_errors.keys())}")
-    app.run_server(host='0.0.0.0', port=port, debug=False)
+    logger.info(f"Starting Phase 4A base structure on port {port}")
+    logger.info("All dependencies loaded successfully")
+    
+    app.run_server(
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        dev_tools_hot_reload=False,
+        dev_tools_ui=False,
+        dev_tools_props_check=False
+    )
