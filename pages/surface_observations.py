@@ -329,15 +329,18 @@ def create_stats_modal():
     )
 
 
+
+import geopandas as gpd # Make sure this import is at the top of the file
+
 def init():
     """Initialize by loading pre-aggregated data and shapefiles."""
     global raw_data_dict_afternoon, background_data_dict_afternoon
     global raw_data_dict_all, background_data_dict_all
     global available_sites
-    global GEO_DF, GEO_DF2  # Add the new globals here
+    global GEO_DF, GEO_DF2
 
     try:
-        logging.info("Initializing data dictionaries...")
+        logging.info("--- Initializing Surface Observations Page ---")
 
         # Load shapefiles for the map
         try:
@@ -347,29 +350,38 @@ def init():
             GEO_DF = gpd.read_file(shapefile_path1)
             GEO_DF2 = gpd.read_file(shapefile_path2)
             logging.info("Successfully loaded shapefiles.")
-        except Exception as e:
-            logging.error(f"Failed to load shapefiles: {e}")
-            # Continue without map data if necessary, or handle as a critical error
-            GEO_DF = None
-            GEO_DF2 = None
+        except Exception:
+            logging.exception("Failed to load shapefiles.")
+            GEO_DF, GEO_DF2 = None, None
 
         # Load afternoon hours data
         hdf_filename_afternoon = prm.DATA_FILES['aggregated_data_afternoon']
         logging.info(f"Loading afternoon data from: {hdf_filename_afternoon}")
-        raw_dict_afternoon, bg_dict_afternoon, _, _ = \
+        raw_data_dict_afternoon, background_data_dict_afternoon, _, _ = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_afternoon)
-        raw_data_dict_afternoon = raw_dict_afternoon
-        background_data_dict_afternoon = bg_dict_afternoon
         logging.info("Successfully loaded afternoon hours data.")
+
+        # --- NEW DEBUGGING LOGS ---
+        if raw_data_dict_afternoon:
+            logging.info(f"Afternoon data dictionary keys found: {list(raw_data_dict_afternoon.keys())}")
+        else:
+            logging.error("Afternoon data dictionary is empty or None after loading!")
+        # --- END NEW DEBUGGING LOGS ---
 
         # Load all hours data
         hdf_filename_all = prm.DATA_FILES['aggregated_data_allhours.h5']
         logging.info(f"Loading all hours data from: {hdf_filename_all}")
-        raw_dict_all, bg_dict_all, _, _ = \
+        raw_data_dict_all, background_data_dict_all, _, _ = \
             cfunc.load_four_dicts_from_hdf(hdf_filename_all)
-        raw_data_dict_all = raw_dict_all
-        background_data_dict_all = bg_dict_all
         logging.info("Successfully loaded all hours data.")
+        
+        # --- NEW DEBUGGING LOGS ---
+        if raw_data_dict_all:
+            logging.info(f"All-hours data dictionary keys found: {list(raw_data_dict_all.keys())}")
+        else:
+            logging.error("All-hours data dictionary is empty or None after loading!")
+        # --- END NEW DEBUGGING LOGS ---
+
 
         # Populate available sites for each gas type
         available_sites = {}
@@ -383,9 +395,10 @@ def init():
             available_sites[gas] = sorted(sites_afternoon.union(sites_all))
             logging.info(f"Available sites for {gas}: {available_sites[gas]}")
 
+        logging.info("--- Initialization Complete ---")
         return available_sites.get('co2', [])
 
-    except Exception as e:
+    except Exception:
         logging.exception("A critical error occurred during initialization.")
         # Initialize empty dictionaries in case of error
         raw_data_dict_afternoon, background_data_dict_afternoon = {}, {}
