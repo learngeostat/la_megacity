@@ -14,6 +14,17 @@ import scipy
 import astropy
 import statsmodels
 
+# Import overview module - this is the critical test for Phase 4B
+try:
+    from pages.overview import init as init_overview
+    from pages.overview import get_layout as get_overview_layout
+    from pages.overview import register_callbacks as register_overview_callbacks
+    OVERVIEW_MODULE_LOADED = True
+    OVERVIEW_ERROR = None
+except Exception as e:
+    OVERVIEW_MODULE_LOADED = False
+    OVERVIEW_ERROR = str(e)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -69,8 +80,8 @@ app.layout = html.Div([
     dbc.Row(
         dbc.Col(
             html.Div([
-                html.I(className="fas fa-check-circle text-success me-2"),
-                html.Span("Phase 4A: All dependencies loaded successfully", className="small")
+                html.I(className=f"fas fa-{'check-circle text-success' if OVERVIEW_MODULE_LOADED else 'exclamation-triangle text-warning'} me-2"),
+                html.Span(f"Phase 4B: Overview module {'loaded successfully' if OVERVIEW_MODULE_LOADED else 'failed to load'}", className="small")
             ], className="text-center mb-2")
         )
     ),
@@ -191,7 +202,10 @@ def render_page_content(pathname):
         logger.info(f"Rendering page: {pathname}")
         
         if pathname == "/page-1" or pathname == "/" or not pathname:
-            return get_overview_placeholder()
+            if OVERVIEW_MODULE_LOADED:
+                return get_overview_layout()
+            else:
+                return get_overview_error_layout()
         elif pathname == "/page-2":
             return get_oco3_placeholder()
         elif pathname == "/page-3":
@@ -212,61 +226,30 @@ def render_page_content(pathname):
             html.P(f"An error occurred: {str(e)}")
         ])
 
-# Placeholder page functions - identical structure to your original but with simple content
-def get_overview_placeholder():
+# Error layout if overview module fails to load
+def get_overview_error_layout():
     return dbc.Container([
         dbc.Row([
             dbc.Col([
-                html.H2("Overview Dashboard", className="mb-4"),
+                html.H2("Overview Page - Module Load Error", className="mb-4"),
                 dbc.Alert([
-                    html.H4("Phase 4A: Base Structure Working", className="alert-heading"),
-                    html.P("All dependencies loaded successfully. This page will contain:"),
-                    html.Ul([
-                        html.Li("System status indicators"),
-                        html.Li("Recent data summary"),
-                        html.Li("Quick navigation cards"),
-                        html.Li("Key metrics overview")
-                    ])
-                ], color="success"),
-                
-                dbc.Row([
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardBody([
-                                html.H5("Dependencies Status", className="card-title"),
-                                html.P("✅ All scientific libraries loaded"),
-                                html.P("✅ Geospatial libraries working"),
-                                html.P("✅ Visualization ready")
-                            ])
-                        ])
-                    ], width=6),
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardBody([
-                                html.H5("Next Steps", className="card-title"),
-                                html.P("Ready to add real functionality"),
-                                html.P("Will enable pages incrementally"),
-                                html.P("Phase 4B: Enable this page next")
-                            ])
-                        ])
-                    ], width=6)
-                ])
+                    html.H4("Phase 4B: Module Import Failed", className="alert-heading"),
+                    html.P(f"Error loading overview module: {OVERVIEW_ERROR}"),
+                    html.Hr(),
+                    html.P("This indicates an issue with the modular import structure.")
+                ], color="danger")
             ])
         ])
     ])
 
+# Keep placeholder functions for other pages
 def get_oco3_placeholder():
     return dbc.Container([
         html.H2("OCO-3 Satellite Observations", className="mb-4"),
         dbc.Alert([
-            html.H4("Phase 4A: Placeholder Page"),
-            html.P("This page will contain:"),
-            html.Ul([
-                html.Li("OCO-3 satellite data visualization"),
-                html.Li("CO2 concentration maps"),
-                html.Li("Time series analysis"),
-                html.Li("Data filtering and selection tools")
-            ])
+            html.H4("Phase 4B: Placeholder Page"),
+            html.P("Overview module status: " + ("Working" if OVERVIEW_MODULE_LOADED else "Failed")),
+            html.P("This page will be enabled in Phase 4C")
         ], color="info")
     ])
 
@@ -274,14 +257,8 @@ def get_surface_placeholder():
     return dbc.Container([
         html.H2("Surface Observations", className="mb-4"),
         dbc.Alert([
-            html.H4("Phase 4A: Placeholder Page"),
-            html.P("This page will contain:"),
-            html.Ul([
-                html.Li("Ground-based measurement data"),
-                html.Li("Station network visualization"),
-                html.Li("Real-time monitoring displays"),
-                html.Li("Data quality indicators")
-            ])
+            html.H4("Phase 4B: Placeholder Page"),
+            html.P("This page will be enabled in Phase 4D")
         ], color="info")
     ])
 
@@ -289,14 +266,8 @@ def get_hindcast_placeholder():
     return dbc.Container([
         html.H2("Emissions Analysis (Hindcast/Nowcast)", className="mb-4"),
         dbc.Alert([
-            html.H4("Phase 4A: Placeholder Page"),
-            html.P("This page will contain:"),
-            html.Ul([
-                html.Li("Historical emissions analysis"),
-                html.Li("Current emissions estimates"),
-                html.Li("Flux calculation results"),
-                html.Li("Uncertainty analysis")
-            ])
+            html.H4("Phase 4B: Placeholder Page"),
+            html.P("This page will be enabled in Phase 4E")
         ], color="info")
     ])
 
@@ -304,16 +275,24 @@ def get_forecast_placeholder():
     return dbc.Container([
         html.H2("Emissions Forecast", className="mb-4"),
         dbc.Alert([
-            html.H4("Phase 4A: Placeholder Page"),
-            html.P("This page will contain:"),
-            html.Ul([
-                html.Li("Future emissions projections"),
-                html.Li("Scenario modeling"),
-                html.Li("Forecast confidence intervals"),
-                html.Li("Model validation metrics")
-            ])
+            html.H4("Phase 4B: Placeholder Page"),
+            html.P("This page will be enabled in Phase 4F")
         ], color="info")
     ])
+
+# Initialize and register callbacks
+def init_app():
+    """Initialize all necessary components"""
+    try:
+        if OVERVIEW_MODULE_LOADED:
+            logger.info("Initializing overview module")
+            init_overview()
+            register_overview_callbacks(app)
+            logger.info("Successfully initialized overview module")
+        else:
+            logger.error(f"Overview module not loaded: {OVERVIEW_ERROR}")
+    except Exception as e:
+        logger.error(f"Error initializing overview module: {e}")
 
 # URL redirect callback
 @app.callback(
@@ -330,15 +309,21 @@ def init_pathname(pathname):
 def health_check():
     return {
         'status': 'healthy',
-        'phase': 'phase-4a-base-structure',
-        'pages': ['overview', 'oco3', 'surface', 'hindcast', 'forecast'],
+        'phase': 'phase-4b-overview-module',
+        'overview_module_loaded': OVERVIEW_MODULE_LOADED,
+        'overview_error': OVERVIEW_ERROR,
         'dependencies_loaded': True
     }, 200
 
+# Initialize the app when module is imported
+init_app()
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting Phase 4A base structure on port {port}")
-    logger.info("All dependencies loaded successfully")
+    logger.info(f"Starting Phase 4B with overview module on port {port}")
+    logger.info(f"Overview module loaded: {OVERVIEW_MODULE_LOADED}")
+    if OVERVIEW_ERROR:
+        logger.error(f"Overview module error: {OVERVIEW_ERROR}")
     
     app.run_server(
         host='0.0.0.0',
