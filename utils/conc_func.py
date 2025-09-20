@@ -6,6 +6,10 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import warnings
+import gcsfs
+import tempfile
+import os
+import pandas as pd
 
 #%% Return filtered Dataframe for selected hours
 def select_hours_df(df, measurements_hours):
@@ -392,6 +396,7 @@ def aggregate_background_data(df, scale='MS', agg_method='mean'):
 def save_two_dicts_to_hdf(raw_dict, background_dict, hdf_filename):
     """
     Saves two nested dictionaries containing DataFrames into an HDF5 file.
+    Supports both local paths and GCS paths.
     
     Parameters:
     -----------
@@ -400,37 +405,60 @@ def save_two_dicts_to_hdf(raw_dict, background_dict, hdf_filename):
     background_dict : dict
         Dictionary containing nested DataFrames with structure {gas_type: {timeperiod: df}}
     hdf_filename : str
-        Name of the HDF5 file to save the data
+        Name of the HDF5 file to save the data (local path or GCS path starting with 'gs://')
     """
-    with pd.HDFStore(hdf_filename, mode='w', complevel=9, complib='zlib') as store:
-        # Save raw dictionary
-        for gas_type, time_dict in raw_dict.items():
-            # Skip if time_dict is empty
-            if not time_dict:
-                continue
-                
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"raw/{gas_type}/{time_period}", df)
+    # Initialize GCS filesystem if needed
+    if hdf_filename.startswith('gs://'):
+        fs = gcsfs.GCSFileSystem()
+        # Create a temporary file for local operations
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            local_filename = temp_file.name
+    else:
+        local_filename = hdf_filename
+    
+    try:
+        with pd.HDFStore(local_filename, mode='w', complevel=9, complib='zlib') as store:
+            # Save raw dictionary
+            for gas_type, time_dict in raw_dict.items():
+                # Skip if time_dict is empty
+                if not time_dict:
+                    continue
+                    
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"raw/{gas_type}/{time_period}", df)
+            
+            # Save background dictionary
+            for gas_type, time_dict in background_dict.items():
+                # Skip if time_dict is empty
+                if not time_dict:
+                    continue
+                    
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"background/{gas_type}/{time_period}", df)
         
-        # Save background dictionary
-        for gas_type, time_dict in background_dict.items():
-            # Skip if time_dict is empty
-            if not time_dict:
-                continue
-                
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"background/{gas_type}/{time_period}", df)
+        # Upload to GCS if needed
+        if hdf_filename.startswith('gs://'):
+            fs.put(local_filename, hdf_filename)
+            
+    finally:
+        # Clean up temporary file if we created one
+        if hdf_filename.startswith('gs://') and 'local_filename' in locals():
+            try:
+                os.unlink(local_filename)
+            except OSError:
+                pass
 
 def load_two_dicts_from_hdf(hdf_filename):
     """
     Loads two nested dictionaries containing DataFrames from an HDF5 file.
+    Supports both local paths and GCS paths.
     
     Parameters:
     -----------
     hdf_filename : str
-        Name of the HDF5 file to load the data from
+        Name of the HDF5 file to load the data from (local path or GCS path starting with 'gs://')
     
     Returns:
     --------
@@ -440,31 +468,69 @@ def load_two_dicts_from_hdf(hdf_filename):
     raw_dict = {'co2': {}, 'ch4': {}, 'co': {}}
     background_dict = {'co2': {}, 'ch4': {}, 'co': {}}
     
-    with pd.HDFStore(hdf_filename, mode='r') as store:
-        # Get all keys in the HDF5 file
-        keys = [key[1:] for key in store.keys()]  # Remove leading '/'
+    # Check if filename is a GCS path
+    if hdf_filename.startswith('gs://'):
+        # Initialize GCS filesystem
+        fs = gcsfs.GCSFileSystem()
         
-        # Load raw dictionary data
-        raw_keys = [key for key in keys if key.startswith("raw/")]
-        for key in raw_keys:
-            # Parse the path to get gas type and time period
-            _, gas_type, time_period = key.split('/')
-            if gas_type in raw_dict:
-                raw_dict[gas_type][time_period] = store[f"/{key}"]
+        # Check if file exists on GCS
+        if not fs.exists(hdf_filename):
+            print(f"Error: HDF5 file does not exist on GCS: {hdf_filename}")
+            return raw_dict, background_dict
         
-        # Load background dictionary data
-        bg_keys = [key for key in keys if key.startswith("background/")]
-        for key in bg_keys:
-            # Parse the path to get gas type and time period
-            _, gas_type, time_period = key.split('/')
-            if gas_type in background_dict:
-                background_dict[gas_type][time_period] = store[f"/{key}"]
+        # Create a temporary file to download the HDF5 data
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                # Download the file from GCS to temporary local file
+                fs.get(hdf_filename, temp_file.name)
+                local_filename = temp_file.name
+                
+            except Exception as e:
+                print(f"Error downloading HDF5 file from GCS: {str(e)}")
+                return raw_dict, background_dict
+    else:
+        # Use local file path directly
+        local_filename = hdf_filename
+        if not os.path.exists(local_filename):
+            print(f"Error: Local HDF5 file does not exist: {local_filename}")
+            return raw_dict, background_dict
+    
+    try:
+        with pd.HDFStore(local_filename, mode='r') as store:
+            # Get all keys in the HDF5 file
+            keys = [key[1:] for key in store.keys()]  # Remove leading '/'
+            
+            # Load raw dictionary data
+            raw_keys = [key for key in keys if key.startswith("raw/")]
+            for key in raw_keys:
+                # Parse the path to get gas type and time period
+                _, gas_type, time_period = key.split('/')
+                if gas_type in raw_dict:
+                    raw_dict[gas_type][time_period] = store[f"/{key}"]
+            
+            # Load background dictionary data
+            bg_keys = [key for key in keys if key.startswith("background/")]
+            for key in bg_keys:
+                # Parse the path to get gas type and time period
+                _, gas_type, time_period = key.split('/')
+                if gas_type in background_dict:
+                    background_dict[gas_type][time_period] = store[f"/{key}"]
+                    
+    finally:
+        # Clean up temporary file if we created one
+        if hdf_filename.startswith('gs://') and 'local_filename' in locals():
+            try:
+                os.unlink(local_filename)
+            except OSError:
+                pass
     
     return raw_dict, background_dict
+
 
 def save_four_dicts_to_hdf(raw_dict, background_dict, raw_ratio_dict, background_ratio_dict, hdf_filename):
     """
     Saves four nested dictionaries containing DataFrames into an HDF5 file.
+    Supports both local paths and GCS paths.
     
     Parameters:
     -----------
@@ -477,49 +543,73 @@ def save_four_dicts_to_hdf(raw_dict, background_dict, raw_ratio_dict, background
     background_ratio_dict : dict
         Dictionary containing nested DataFrames with structure {ratio_type: {timeperiod: df}}
     hdf_filename : str
-        Name of the HDF5 file to save the data
+        Name of the HDF5 file to save the data (local path or GCS path starting with 'gs://')
     """
-    with pd.HDFStore(hdf_filename, mode='w', complevel=9, complib='zlib') as store:
-        # Save raw gas dictionary
-        for gas_type, time_dict in raw_dict.items():
-            if not time_dict:
-                continue
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"raw/{gas_type}/{time_period}", df)
+    # Initialize GCS filesystem if needed
+    if hdf_filename.startswith('gs://'):
+        fs = gcsfs.GCSFileSystem()
+        # Create a temporary file for local operations
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            local_filename = temp_file.name
+    else:
+        local_filename = hdf_filename
+    
+    try:
+        with pd.HDFStore(local_filename, mode='w', complevel=9, complib='zlib') as store:
+            # Save raw gas dictionary
+            for gas_type, time_dict in raw_dict.items():
+                if not time_dict:
+                    continue
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"raw/{gas_type}/{time_period}", df)
+            
+            # Save background gas dictionary
+            for gas_type, time_dict in background_dict.items():
+                if not time_dict:
+                    continue
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"background/{gas_type}/{time_period}", df)
+            
+            # Save raw ratio dictionary
+            for ratio_type, time_dict in raw_ratio_dict.items():
+                if not time_dict:
+                    continue
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"raw_ratio/{ratio_type}/{time_period}", df)
+            
+            # Save background ratio dictionary
+            for ratio_type, time_dict in background_ratio_dict.items():
+                if not time_dict:
+                    continue
+                for time_period, df in time_dict.items():
+                    if isinstance(df, (pd.DataFrame, pd.Series)):
+                        store.put(f"background_ratio/{ratio_type}/{time_period}", df)
         
-        # Save background gas dictionary
-        for gas_type, time_dict in background_dict.items():
-            if not time_dict:
-                continue
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"background/{gas_type}/{time_period}", df)
-        
-        # Save raw ratio dictionary
-        for ratio_type, time_dict in raw_ratio_dict.items():
-            if not time_dict:
-                continue
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"raw_ratio/{ratio_type}/{time_period}", df)
-        
-        # Save background ratio dictionary
-        for ratio_type, time_dict in background_ratio_dict.items():
-            if not time_dict:
-                continue
-            for time_period, df in time_dict.items():
-                if isinstance(df, (pd.DataFrame, pd.Series)):
-                    store.put(f"background_ratio/{ratio_type}/{time_period}", df)
+        # Upload to GCS if needed
+        if hdf_filename.startswith('gs://'):
+            fs.put(local_filename, hdf_filename)
+            
+    finally:
+        # Clean up temporary file if we created one
+        if hdf_filename.startswith('gs://') and 'local_filename' in locals():
+            try:
+                os.unlink(local_filename)
+            except OSError:
+                pass
+
 
 def load_four_dicts_from_hdf(hdf_filename):
     """
     Loads four nested dictionaries containing DataFrames from an HDF5 file.
+    Supports both local paths and GCS paths.
     
     Parameters:
     -----------
     hdf_filename : str
-        Name of the HDF5 file to load the data from
+        Name of the HDF5 file to load the data from (local path or GCS path starting with 'gs://')
     
     Returns:
     --------
@@ -532,45 +622,81 @@ def load_four_dicts_from_hdf(hdf_filename):
     raw_ratio_dict = {'co2_ch4': {}, 'co_co2': {}, 'co_ch4': {}}
     background_ratio_dict = {'co2_ch4': {}}
     
-    with pd.HDFStore(hdf_filename, mode='r') as store:
-        # Get all keys in the HDF5 file
-        keys = [key[1:] for key in store.keys()]  # Remove leading '/'
+    # Check if filename is a GCS path
+    if hdf_filename.startswith('gs://'):
+        # Initialize GCS filesystem
+        fs = gcsfs.GCSFileSystem()
         
-        # Load raw gas dictionary data
-        raw_keys = [key for key in keys if key.startswith("raw/")]
-        for key in raw_keys:
-            parts = key.split('/')
-            gas_type = parts[1]
-            time_period = parts[2]
-            if gas_type in raw_dict:
-                raw_dict[gas_type][time_period] = store[f"/{key}"]
+        # Check if file exists on GCS
+        if not fs.exists(hdf_filename):
+            print(f"Error: HDF5 file does not exist on GCS: {hdf_filename}")
+            return raw_dict, background_dict, raw_ratio_dict, background_ratio_dict
         
-        # Load background gas dictionary data
-        bg_keys = [key for key in keys if key.startswith("background/")]
-        for key in bg_keys:
-            parts = key.split('/')
-            gas_type = parts[1]
-            time_period = parts[2]
-            if gas_type in background_dict:
-                background_dict[gas_type][time_period] = store[f"/{key}"]
-        
-        # Load raw ratio dictionary data
-        raw_ratio_keys = [key for key in keys if key.startswith("raw_ratio/")]
-        for key in raw_ratio_keys:
-            parts = key.split('/')
-            ratio_type = parts[1]
-            time_period = parts[2]
-            if ratio_type in raw_ratio_dict:
-                raw_ratio_dict[ratio_type][time_period] = store[f"/{key}"]
-        
-        # Load background ratio dictionary data
-        bg_ratio_keys = [key for key in keys if key.startswith("background_ratio/")]
-        for key in bg_ratio_keys:
-            parts = key.split('/')
-            ratio_type = parts[1]
-            time_period = parts[2]
-            if ratio_type in background_ratio_dict:
-                background_ratio_dict[ratio_type][time_period] = store[f"/{key}"]
+        # Create a temporary file to download the HDF5 data
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                # Download the file from GCS to temporary local file
+                fs.get(hdf_filename, temp_file.name)
+                local_filename = temp_file.name
+                
+            except Exception as e:
+                print(f"Error downloading HDF5 file from GCS: {str(e)}")
+                return raw_dict, background_dict, raw_ratio_dict, background_ratio_dict
+    else:
+        # Use local file path directly
+        local_filename = hdf_filename
+        if not os.path.exists(local_filename):
+            print(f"Error: Local HDF5 file does not exist: {local_filename}")
+            return raw_dict, background_dict, raw_ratio_dict, background_ratio_dict
+    
+    try:
+        with pd.HDFStore(local_filename, mode='r') as store:
+            # Get all keys in the HDF5 file
+            keys = [key[1:] for key in store.keys()]  # Remove leading '/'
+            
+            # Load raw gas dictionary data
+            raw_keys = [key for key in keys if key.startswith("raw/")]
+            for key in raw_keys:
+                parts = key.split('/')
+                gas_type = parts[1]
+                time_period = parts[2]
+                if gas_type in raw_dict:
+                    raw_dict[gas_type][time_period] = store[f"/{key}"]
+            
+            # Load background gas dictionary data
+            bg_keys = [key for key in keys if key.startswith("background/")]
+            for key in bg_keys:
+                parts = key.split('/')
+                gas_type = parts[1]
+                time_period = parts[2]
+                if gas_type in background_dict:
+                    background_dict[gas_type][time_period] = store[f"/{key}"]
+            
+            # Load raw ratio dictionary data
+            raw_ratio_keys = [key for key in keys if key.startswith("raw_ratio/")]
+            for key in raw_ratio_keys:
+                parts = key.split('/')
+                ratio_type = parts[1]
+                time_period = parts[2]
+                if ratio_type in raw_ratio_dict:
+                    raw_ratio_dict[ratio_type][time_period] = store[f"/{key}"]
+            
+            # Load background ratio dictionary data
+            bg_ratio_keys = [key for key in keys if key.startswith("background_ratio/")]
+            for key in bg_ratio_keys:
+                parts = key.split('/')
+                ratio_type = parts[1]
+                time_period = parts[2]
+                if ratio_type in background_ratio_dict:
+                    background_ratio_dict[ratio_type][time_period] = store[f"/{key}"]
+                    
+    finally:
+        # Clean up temporary file if we created one
+        if hdf_filename.startswith('gs://') and 'local_filename' in locals():
+            try:
+                os.unlink(local_filename)
+            except OSError:
+                pass
     
     return raw_dict, background_dict, raw_ratio_dict, background_ratio_dict
 
@@ -599,38 +725,79 @@ def append_dict_to_hdf(new_dict, dict_name, hdf_filename):
 def load_dicts_from_hdf(filename, categories):
     """
     Load data from HDF file for specified categories (zip, census, custom).
+    Now supports both local files and GCS paths.
     
     Args:
-        filename (str): Path to the HDF file
+        filename (str): Path to the HDF file (local or GCS path starting with 'gs://')
         categories (list): List of categories to load (e.g., ['zip', 'census', 'custom'])
     
     Returns:
         dict: Dictionary containing the loaded data with prefixed keys
     """
+    import gcsfs
+    import tempfile
+    import os
+    
     results = {}
     
-    for category in categories:
-        try:
-            # Define the paths for this category
-            centroids_path = f'/{category}/{category}_centroids'
-            est_flux_path = f'/{category}/{category}_est_flux'
-            unc_flux_path = f'/{category}/{category}_unc_flux'
-            
-            # Read each component with prefixed keys
-            with pd.HDFStore(filename, mode='r') as store:
-                if centroids_path in store:
-                    results[f'{category}_centroids'] = store[centroids_path]
-                if est_flux_path in store:
-                    results[f'{category}_est_flux'] = store[est_flux_path]
-                if unc_flux_path in store:
-                    results[f'{category}_unc_flux'] = store[unc_flux_path]
+    # Check if filename is a GCS path
+    if filename.startswith('gs://'):
+        # Initialize GCS filesystem
+        fs = gcsfs.GCSFileSystem()
+        
+        # Check if file exists on GCS
+        if not fs.exists(filename):
+            print(f"Error: HDF5 file does not exist on GCS: {filename}")
+            return results
+        
+        # Create a temporary file to download the HDF5 data
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                # Download the file from GCS to temporary local file
+                fs.get(filename, temp_file.name)
+                local_filename = temp_file.name
                 
-            if not any(k.startswith(category) for k in results):
-                print(f"Warning: No data found for category '{category}'")
+            except Exception as e:
+                print(f"Error downloading HDF5 file from GCS: {str(e)}")
+                return results
+    else:
+        # Use local file path directly
+        local_filename = filename
+        if not os.path.exists(local_filename):
+            print(f"Error: Local HDF5 file does not exist: {local_filename}")
+            return results
+    
+    try:
+        for category in categories:
+            try:
+                # Define the paths for this category
+                centroids_path = f'/{category}/{category}_centroids'
+                est_flux_path = f'/{category}/{category}_est_flux'
+                unc_flux_path = f'/{category}/{category}_unc_flux'
                 
-        except Exception as e:
-            print(f"Error loading data for category '{category}': {str(e)}")
-            continue
+                # Read each component with prefixed keys
+                with pd.HDFStore(local_filename, mode='r') as store:
+                    if centroids_path in store:
+                        results[f'{category}_centroids'] = store[centroids_path]
+                    if est_flux_path in store:
+                        results[f'{category}_est_flux'] = store[est_flux_path]
+                    if unc_flux_path in store:
+                        results[f'{category}_unc_flux'] = store[unc_flux_path]
+                    
+                if not any(k.startswith(category) for k in results):
+                    print(f"Warning: No data found for category '{category}'")
+                    
+            except Exception as e:
+                print(f"Error loading data for category '{category}': {str(e)}")
+                continue
+                
+    finally:
+        # Clean up temporary file if we created one
+        if filename.startswith('gs://') and 'local_filename' in locals():
+            try:
+                os.unlink(local_filename)
+            except OSError:
+                pass  # File might already be deleted
     
     return results
 # Example usage:

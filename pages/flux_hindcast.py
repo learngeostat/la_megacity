@@ -65,17 +65,52 @@ feature_id_mapping = {
     'custom': 'Zones'
 }
 
+def check_gcs_files():
+    """Debug function to check if required files exist on GCS"""
+    fs = gcsfs.GCSFileSystem()
+    
+    files_to_check = [
+        f"{GCS_NC_FOLDER_PATH}fluxresults1.nc",
+        f"{GCS_HDF_FOLDER_PATH}spatial_data.h5",
+        f"{GCS_SHAPEFILE_FOLDER_PATH}zip_code_socab.shp",
+        f"{GCS_SHAPEFILE_FOLDER_PATH}census_tract_clipped.shp", 
+        f"{GCS_SHAPEFILE_FOLDER_PATH}zones_partitoned.shp"
+    ]
+    
+    for file_path in files_to_check:
+        exists = fs.exists(file_path)
+        print(f"File exists: {exists} - {file_path}")
+        
+        if not exists:
+            # List what's actually in the directory
+            directory = '/'.join(file_path.split('/')[:-1])
+            try:
+                files_in_dir = fs.ls(directory)
+                print(f"Files in {directory}: {files_in_dir}")
+            except Exception as e:
+                print(f"Error listing directory {directory}: {e}")
+
+
 def init():
     """Initialize flux forecast components with detailed logging."""
     global FLUX_DATA, UNCERTAINTY_DATA, DATES, LAT, LON, LAT_GRID, LON_GRID, available_dates
     global ZIP_DATA, CENSUS_DATA, CUSTOM_DATA
     
     logger.info("--- Starting flux hindcast data initialization ---")
+    check_gcs_files()
     
     try:
+        # Initialize GCS filesystem
+        fs = gcsfs.GCSFileSystem()
+        
         # --- Step 1: Load NetCDF data ---
         filename = f"{GCS_NC_FOLDER_PATH}fluxresults1.nc" 
         logger.info(f"Attempting to load NetCDF data from: {filename}")
+        
+        # Check if file exists on GCS
+        if not fs.exists(filename):
+            logger.error(f"NetCDF file does not exist on GCS: {filename}")
+            return False
         
         data_dict = load_netcdf_data(filename)
         logger.info("Successfully loaded NetCDF data into dictionary.")
@@ -93,17 +128,22 @@ def init():
 
         # --- Step 2: Load spatial aggregation data from HDF5 ---
         try:
-            spatial_hdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.hઈ"
+            spatial_hdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.h5"
             logger.info(f"Attempting to load HDF5 spatial data from: {spatial_hdf_filename}")
             
-            spatial_data = cfunc.load_dicts_from_hdf(spatial_hdf_filename, ['zip', 'census', 'custom'])
-            logger.info("Successfully loaded HDF5 data.")
-            
-            # Store the data directly as loaded from HDF
-            ZIP_DATA = {k: v for k, v in spatial_data.items() if k.startswith('zip_')}
-            CENSUS_DATA = {k: v for k, v in spatial_data.items() if k.startswith('census_')}
-            CUSTOM_DATA = {k: v for k, v in spatial_data.items() if k.startswith('custom_')}
-            logger.info("Successfully parsed and stored spatial aggregation data.")
+            # Check if HDF5 file exists on GCS
+            if not fs.exists(spatial_hdf_filename):
+                logger.warning(f"HDF5 file does not exist on GCS: {spatial_hdf_filename}")
+                ZIP_DATA, CENSUS_DATA, CUSTOM_DATA = {}, {}, {}
+            else:
+                spatial_data = cfunc.load_dicts_from_hdf(spatial_hdf_filename, ['zip', 'census', 'custom'])
+                logger.info("Successfully loaded HDF5 data.")
+                
+                # Store the data directly as loaded from HDF
+                ZIP_DATA = {k: v for k, v in spatial_data.items() if k.startswith('zip_')}
+                CENSUS_DATA = {k: v for k, v in spatial_data.items() if k.startswith('census_')}
+                CUSTOM_DATA = {k: v for k, v in spatial_data.items() if k.startswith('custom_')}
+                logger.info("Successfully parsed and stored spatial aggregation data.")
             
         except Exception:
             # This will log the full error if HDF5 loading fails
@@ -276,36 +316,59 @@ def get_spatial_data(agg_type):
 
 def load_netcdf_data(filename):
     """
-    Load NetCDF data and ensure it is read in [latitude, longitude, time] order.
+    Load NetCDF data from GCS and ensure it is read in [latitude, longitude, time] order.
 
     Args:
-        filename (str): Path+filename to the NetCDF file.
+        filename (str): GCS path to the NetCDF file.
 
     Returns:
         dict: Dictionary containing flux, uncertainty, and metadata.
     """
-    # Open the NetCDF file
-    dataset = xr.open_dataset(filename,engine="h5netcdf")
+    import gcsfs
+    import tempfile
+    import os
+    
+    # Initialize GCS filesystem
+    fs = gcsfs.GCSFileSystem()
+    
+    # Create a temporary file to download the NetCDF data
+    with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as temp_file:
+        try:
+            # Download the file from GCS to temporary local file
+            fs.get(filename, temp_file.name)
+            
+            # Open the NetCDF file using the local temporary file
+            dataset = xr.open_dataset(temp_file.name, engine="h5netcdf")
 
-    # Read variables
-    # Transpose and convert to float32 where applicable
-    flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-    uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-    time = dataset['time'].values  # POSIX time remains unchanged
-    lat = dataset['lat'].values.astype(np.float32)
-    lon = dataset['lon'].values.astype(np.float32)
-    lat_grid = dataset['lat_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
-    lon_grid = dataset['lon_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
+            # Read variables
+            # Transpose and convert to float32 where applicable
+            flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+            uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+            time = dataset['time'].values  # POSIX time remains unchanged
+            lat = dataset['lat'].values.astype(np.float32)
+            lon = dataset['lon'].values.astype(np.float32)
+            lat_grid = dataset['lat_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
+            lon_grid = dataset['lon_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
 
-    return {
-        'flux': flux,
-        'uncertainty': uncertainty,
-        'time': time,
-        'latitude': lat,
-        'longitude': lon,
-        'lat_grid': lat_grid,
-        'lon_grid': lon_grid,
-    }
+            # Close the dataset
+            dataset.close()
+            
+            return {
+                'flux': flux,
+                'uncertainty': uncertainty,
+                'time': time,
+                'latitude': lat,
+                'longitude': lon,
+                'lat_grid': lat_grid,
+                'lon_grid': lon_grid,
+            }
+            
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file.name)
+            except OSError:
+                pass  # File might already be deleted
     
 def get_current_data_slice(data, time_range, temporal_agg):
     """Helper function to get the current data slice based on time range and aggregation"""
