@@ -57,6 +57,16 @@ try:
 except Exception as e:
     EMISSIONS_MODULE_LOADED = False
     EMISSIONS_ERROR = str(e)
+    
+try:
+    from pages.flux_hindcast import init as init_flux_hindcast
+    from pages.flux_hindcast import get_layout as get_flux_hindcast_layout
+    from pages.flux_hindcast import register_callbacks as register_flux_hindcast_callbacks
+    FLUX_HINDCAST_MODULE_LOADED = True
+    FLUX_HINDCAST_ERROR = None
+except Exception as e:
+    FLUX_HINDCAST_MODULE_LOADED = False
+    FLUX_HINDCAST_ERROR = str(e)
 
 # Configure logging
 logging.basicConfig(
@@ -297,7 +307,10 @@ def render_page_content(pathname):
             else:
                 return get_surface_observations_error_layout()
         elif pathname == "/page-4":
-            return get_hindcast_placeholder()
+            if FLUX_HINDCAST_MODULE_LOADED:
+                return get_flux_hindcast_layout() # Use the new layout
+            else:
+                return get_flux_hindcast_error_layout() # Show an error if it fails
         elif pathname == "/page-5":
             if FLUX_FORECAST_MODULE_LOADED:
                 return get_flux_forecast_layout()
@@ -326,6 +339,20 @@ def get_overview_error_layout():
                     html.P(f"Error loading overview module: {OVERVIEW_ERROR}"),
                     html.Hr(),
                     html.P("This indicates an issue with the overview module import structure.")
+                ], color="danger")
+            ])
+        ])
+    ])
+
+# Add this function with the other error layouts in app.py
+def get_flux_hindcast_error_layout():
+    return dbc.Container([
+        dbc.Row([
+            dbc.Col([
+                html.H2("Emissions (Hindcast/Nowcast) - Module Load Error", className="mb-4"),
+                dbc.Alert([
+                    html.H4("Flux Hindcast Module Import Failed", className="alert-heading"),
+                    html.P(f"Error loading flux_hindcast module: {FLUX_HINDCAST_ERROR}"),
                 ], color="danger")
             ])
         ])
@@ -446,6 +473,14 @@ def init_app():
             logger.info("Successfully initialized surface_observations module")
         else:
             logger.error(f"Surface observations module not loaded: {SURFACE_OBSERVATIONS_ERROR}")
+            
+        if FLUX_HINDCAST_MODULE_LOADED:
+            logger.info("Initializing flux_hindcast module")
+            init_flux_hindcast()
+            register_flux_hindcast_callbacks(app)
+            logger.info("Successfully initialized flux_hindcast module")
+        else:
+            logger.error(f"Flux hindcast module not loaded: {FLUX_HINDCAST_ERROR}")
 
         if EMISSIONS_MODULE_LOADED:
             logger.info("Initializing emissions module")
