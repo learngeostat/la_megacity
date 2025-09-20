@@ -285,7 +285,7 @@ def load_netcdf_data(filename):
         dict: Dictionary containing flux, uncertainty, and metadata.
     """
     # Open the NetCDF file
-    dataset = xr.open_dataset(filename)
+    dataset = xr.open_dataset(filename,engine="h5netcdf")
 
     # Read variables
     # Transpose and convert to float32 where applicable
