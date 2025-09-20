@@ -900,61 +900,122 @@ def register_help_callback(app):
 # In the get_layout() function, add create_help_modal() to the Container children
 
 # Modified get_layout function
-def get_layout():
-    """Return the page layout"""
-    year_options, dates_by_year = get_years_and_dates(available_dates)
-    initial_year = year_options[0]['value'] if year_options else None
-    initial_dates = sorted(dates_by_year.get(initial_year, []), reverse=True) if initial_year else []
-    initial_date_options = [{'label': date, 'value': date} for date in initial_dates]
+# def get_layout():
+#     """Return the page layout"""
+#     year_options, dates_by_year = get_years_and_dates(available_dates)
+#     initial_year = year_options[0]['value'] if year_options else None
+#     initial_dates = sorted(dates_by_year.get(initial_year, []), reverse=True) if initial_year else []
+#     initial_date_options = [{'label': date, 'value': date} for date in initial_dates]
     
-    return dbc.Container([
-        # Help Modal and stores remain the same
-        create_help_modal(),
-        dcc.Store(id="animation-state"),
-        dcc.Store(id="current-frame", data=0),
-        dcc.Store(id='oco3-map-view-state'),
-        dcc.Store(id='oco3-selected-zip', data=None),
-        dcc.Store(id='expansion-state', data='none'),
-        dcc.Interval(
-            id='animation-interval',
-            interval=DEFAULT_ANIMATION_SPEED,
-            disabled=True
-        ),
+#     return dbc.Container([
+#         # Help Modal and stores remain the same
+#         create_help_modal(),
+#         dcc.Store(id="animation-state"),
+#         dcc.Store(id="current-frame", data=0),
+#         dcc.Store(id='oco3-map-view-state'),
+#         dcc.Store(id='oco3-selected-zip', data=None),
+#         dcc.Store(id='expansion-state', data='none'),
+#         dcc.Interval(
+#             id='animation-interval',
+#             interval=DEFAULT_ANIMATION_SPEED,
+#             disabled=True
+#         ),
         
-        # Main layout sections
-        create_header_card(),
-        create_analysis_controls_card(year_options, initial_year, initial_date_options, initial_dates),
+#         # Main layout sections
+#         create_header_card(),
+#         create_analysis_controls_card(year_options, initial_year, initial_date_options, initial_dates),
         
-        # Main Content - Using flex container
-        html.Div([
-            html.Div(
-                create_map_section(),
-                id="left-panel",
-                className="panel-transition flex-grow-1",
-                style={'flex': '1', 'minWidth': '0'}
-            ),
-            html.Div(
-                create_expansion_controls(),
-                style={'width': '30px'},  # Fixed width for expansion controls
-                className="d-flex flex-column justify-content-center"
-            ),
-            html.Div(
-                create_time_series_section(),
-                id="right-panel",
-                className="panel-transition flex-grow-1",
-                style={'flex': '1', 'minWidth': '0'}
-            )
-        ], className="d-flex gap-2", style={'height': '65vh'}),
+#         # Main Content - Using flex container
+#         html.Div([
+#             html.Div(
+#                 create_map_section(),
+#                 id="left-panel",
+#                 className="panel-transition flex-grow-1",
+#                 style={'flex': '1', 'minWidth': '0'}
+#             ),
+#             html.Div(
+#                 create_expansion_controls(),
+#                 style={'width': '30px'},  # Fixed width for expansion controls
+#                 className="d-flex flex-column justify-content-center"
+#             ),
+#             html.Div(
+#                 create_time_series_section(),
+#                 id="right-panel",
+#                 className="panel-transition flex-grow-1",
+#                 style={'flex': '1', 'minWidth': '0'}
+#             )
+#         ], className="d-flex gap-2", style={'height': '65vh'}),
         
-        # Restore button
-        html.Button(
-            "Restore Panels",
-            id="restore-button",
-            className="restore-button",
-            style={'display': 'none'}
-        )
+#         # Restore button
+#         html.Button(
+#             "Restore Panels",
+#             id="restore-button",
+#             className="restore-button",
+#             style={'display': 'none'}
+#         )
         
-    ], fluid=True, className="px-4 py-3")
+#     ], fluid=True, className="px-4 py-3")
+
+# In emissions.py -> get_layout()
+
+    def get_layout():
+        """Return the page layout"""
+        year_options, dates_by_year = get_years_and_dates(available_dates)
+        initial_year = year_options[0]['value'] if year_options else None
+        initial_dates = sorted(dates_by_year.get(initial_year, []), reverse=True) if initial_year else []
+        initial_date_options = [{'label': date, 'value': date} for date in initial_dates]
+        
+        return dbc.Container([
+            # Apply padding to an inner div, not the main container
+            html.Div([
+                # Help Modal and stores remain the same
+                create_help_modal(),
+                dcc.Store(id="animation-state"),
+                dcc.Store(id="current-frame", data=0),
+                dcc.Store(id='oco3-map-view-state'),
+                dcc.Store(id='oco3-selected-zip', data=None),
+                dcc.Store(id='expansion-state', data='none'),
+                dcc.Interval(
+                    id='animation-interval',
+                    interval=DEFAULT_ANIMATION_SPEED,
+                    disabled=True
+                ),
+                
+                # Main layout sections
+                create_header_card(),
+                create_analysis_controls_card(year_options, initial_year, initial_date_options, initial_dates),
+                
+                # Main Content - Using flex container
+                html.Div([
+                    html.Div(
+                        create_map_section(),
+                        id="left-panel",
+                        className="panel-transition flex-grow-1",
+                        style={'flex': '1', 'minWidth': '0'}
+                    ),
+                    html.Div(
+                        create_expansion_controls(),
+                        style={'width': '30px'},  # Fixed width for expansion controls
+                        className="d-flex flex-column justify-content-center"
+                    ),
+                    html.Div(
+                        create_time_series_section(),
+                        id="right-panel",
+                        className="panel-transition flex-grow-1",
+                        style={'flex': '1', 'minWidth': '0'}
+                    )
+                ], className="d-flex gap-2", style={'height': '65vh'}),
+                
+                # Restore button
+                html.Button(
+                    "Restore Panels",
+                    id="restore-button",
+                    className="restore-button",
+                    style={'display': 'none'}
+                )
+            ], className="px-4 py-3") # <-- PADDING MOVED HERE
+            
+        ], fluid=True) # <-- PADDING REMOVED FROM HERE
 
 
 def init():
