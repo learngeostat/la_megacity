@@ -33,7 +33,9 @@ import io
 
 
 import logging
-logging.getLogger("fiona").disabled = True
+#logging.getLogger("fiona").disabled = True
+
+logger = logging.getLogger(__name__)
 
 # Hardcoded GCS bucket paths
 # Hardcoded GCS bucket paths
@@ -64,15 +66,19 @@ feature_id_mapping = {
 }
 
 def init():
-    """Initialize flux forecast components including netCDF and spatial aggregations"""
+    """Initialize flux forecast components with detailed logging."""
     global FLUX_DATA, UNCERTAINTY_DATA, DATES, LAT, LON, LAT_GRID, LON_GRID, available_dates
     global ZIP_DATA, CENSUS_DATA, CUSTOM_DATA
     
+    logger.info("--- Starting flux hindcast data initialization ---")
+    
     try:
-        # Load netCDF data
-        #filename = os.path.join(prm.SITE_DATA_PATH, 'fluxresults1.nc')
+        # --- Step 1: Load NetCDF data ---
         filename = f"{GCS_NC_FOLDER_PATH}fluxresults1.nc" 
+        logger.info(f"Attempting to load NetCDF data from: {filename}")
+        
         data_dict = load_netcdf_data(filename)
+        logger.info("Successfully loaded NetCDF data into dictionary.")
         
         # Unpack netCDF data into global variables
         FLUX_DATA = data_dict['flux']
@@ -82,51 +88,34 @@ def init():
         LON = data_dict['longitude']
         LAT_GRID = data_dict['lat_grid']
         LON_GRID = data_dict['lon_grid']
-        
-        # Convert POSIX times to datetime for display
         available_dates = [pd.to_datetime(t, unit='s') for t in DATES]
-        
-        print("Successfully initialized flux forecast components")
-        
-        # Load spatial aggregation data from HDF5
+        logger.info(f"Unpacked NetCDF data. Found {len(available_dates)} available dates.")
+
+        # --- Step 2: Load spatial aggregation data from HDF5 ---
         try:
-            #spatial_hdf_filename = os.path.join(prm.SITE_DATA_PATH, 'spatial_data.h5')
+            spatial_hdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.hઈ"
+            logger.info(f"Attempting to load HDF5 spatial data from: {spatial_hdf_filename}")
             
-            spatial_hdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.h5" 
             spatial_data = cfunc.load_dicts_from_hdf(spatial_hdf_filename, ['zip', 'census', 'custom'])
+            logger.info("Successfully loaded HDF5 data.")
             
             # Store the data directly as loaded from HDF
             ZIP_DATA = {k: v for k, v in spatial_data.items() if k.startswith('zip_')}
             CENSUS_DATA = {k: v for k, v in spatial_data.items() if k.startswith('census_')}
             CUSTOM_DATA = {k: v for k, v in spatial_data.items() if k.startswith('custom_')}
+            logger.info("Successfully parsed and stored spatial aggregation data.")
             
-            print("Successfully loaded spatial aggregation data")
-            print(f"Available aggregations: {list(spatial_data.keys())}")
-            
-            # Print some information about the loaded data
-            for agg_type in ['zip', 'census', 'custom']:
-                data = spatial_data
-                est_key = f'{agg_type}_est_flux'
-                unc_key = f'{agg_type}_unc_flux'
-                centroid_key = f'{agg_type}_centroids'
-                
-                if est_key in data and unc_key in data:
-                    print(f"{agg_type} aggregation:")
-                    print(f"  Number of regions: {len(data[est_key])}")
-                    print(f"  Time range: {data[est_key].columns[0]} to {data[est_key].columns[-1]}")
-                    if centroid_key in data:
-                        print(f"  Centroids loaded: {len(data[centroid_key])} regions")
-                    
-        except Exception as e:
-            print(f"Warning: Could not load spatial aggregation data: {e}")
-            ZIP_DATA = {}
-            CENSUS_DATA = {}
-            CUSTOM_DATA = {}
+        except Exception:
+            # This will log the full error if HDF5 loading fails
+            logger.error("Failed to load or process HDF5 spatial aggregation data.", exc_info=True)
+            ZIP_DATA, CENSUS_DATA, CUSTOM_DATA = {}, {}, {}
         
+        logger.info("--- Flux hindcast data initialization successful. ---")
         return True
         
-    except Exception as e:
-        print(f"Error in flux forecast init: {e}")
+    except Exception:
+        # THIS IS THE MOST IMPORTANT PART: It will log the full traceback for any failure
+        logger.error("--- A critical error occurred during flux hindcast data initialization. ---", exc_info=True)
         return False
     
     
