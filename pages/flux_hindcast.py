@@ -36,9 +36,11 @@ import logging
 logging.getLogger("fiona").disabled = True
 
 # Hardcoded GCS bucket paths
+# Hardcoded GCS bucket paths
 GCS_BUCKET = "gs://la-megacity-dashboard-data-1"
 GCS_HDF_FOLDER_PATH = f"{GCS_BUCKET}/data/hdf_files/"
-GCS_NC_FOLDER_PATH = f"{GCS_BUCKET}/data/" # Assuming fluxresults1.nc is in the data/ folder
+# CORRECTED: Point to the hdf_files subfolder for the NetCDF file as well
+GCS_NC_FOLDER_PATH = f"{GCS_BUCKET}/data/hdf_files/" 
 GCS_SHAPEFILE_FOLDER_PATH = f"{GCS_BUCKET}/data/shapefiles/"
 
 
