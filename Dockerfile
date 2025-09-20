@@ -6,10 +6,11 @@ WORKDIR /app
 # --- Dependency Layers ---
 # These layers will be cached unless system dependencies or requirements.txt change.
 
-# 1. Install system dependencies for GDAL
-# This layer is very stable and will almost always be cached.
+# 1. Install system dependencies
+#    - build-essential: Installs compilers like gcc needed for C extensions.
+#    - libgdal-dev & gdal-bin: Required for geospatial libraries like Fiona and Rasterio.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libgdal-dev gdal-bin && \
+    apt-get install -y --no-install-recommends build-essential libgdal-dev gdal-bin && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Copy only the requirements file first
@@ -22,7 +23,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # --- Application Layer ---
 # This is the only layer that will be rebuilt when you change your code.
-# Since it's just a copy operation, it's extremely fast.
 COPY . .
 
 
@@ -33,4 +33,3 @@ EXPOSE 8080
 # ENV GS_NO_SIGN_REQUEST=YES
 
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "app:server"]
-
