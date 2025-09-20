@@ -72,8 +72,8 @@ external_stylesheets = [
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
 ]
 
-app = Dash(__name__, 
-           external_stylesheets=external_stylesheets, 
+app = Dash(__name__,
+           external_stylesheets=external_stylesheets,
            use_pages=False,
            pages_folder="",
            suppress_callback_exceptions=True)
@@ -84,7 +84,7 @@ server = app.server
 # Main app layout matching your original structure
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
-    
+
     # Hero Section with Header
     dbc.Row(
         dbc.Col(
@@ -108,7 +108,7 @@ app.layout = html.Div([
         ),
         className="mb-4"
     ),
-    
+
     # Status indicator - Updated to include emissions module
     dbc.Row(
         dbc.Col(
@@ -118,7 +118,7 @@ app.layout = html.Div([
             ], className="text-center mb-2")
         )
     ),
-    
+
     # Horizontal Navigation Tabs
     dbc.Row(
         dbc.Col(
@@ -127,22 +127,22 @@ app.layout = html.Div([
                     html.I(className="fas fa-bars me-2"),
                     "Overview"
                 ], href="/page-1", active="exact", className="px-4"),
-                
+
                 dbc.NavLink([
                     html.I(className="fas fa-satellite me-2"),
                     "OCO-3 Observations"
                 ], href="/page-2", active="exact", className="px-4"),
-                
+
                 dbc.NavLink([
                     html.I(className="fas fa-tower-observation me-2"),
                     "Surface Observations"
                 ], href="/page-3", active="exact", className="px-4"),
-                
+
                 dbc.NavLink([
                     html.I(className="fas fa-chart-line me-2"),
                     "Emissions (Hindcast/Nowcast)"
                 ], href="/page-4", active="exact", className="px-4"),
-                
+
                 dbc.NavLink([
                     html.I(className="fas fa-chart-line me-2"),
                     "Emissions (Forecast)"
@@ -153,7 +153,7 @@ app.layout = html.Div([
             className="d-flex justify-content-center"
         )
     ),
-    
+
     # Main Content - Full Width
     dbc.Row([
         dbc.Col([
@@ -162,7 +162,7 @@ app.layout = html.Div([
     ])
 ], className="container-fluid px-4 py-3")
 
-# CSS styles (unchanged)
+# CSS styles (with the fix applied)
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -171,7 +171,6 @@ app.index_string = '''
         <title>LA Megacity GHG System</title>
         {%favicon%}
         {%css%}
-        <!-- Add Font Awesome CSS -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
         <style>
             .nav-pills-horizontal {
@@ -248,11 +247,12 @@ app.index_string = '''
             .restore-button:hover {
                 background: #218838;
             }
+            /* <<< THIS RULE HAS BEEN CORRECTED >>> */
             .time-control-overlay {
                 position: absolute;
                 top: 10px;
                 left: 10px;
-                right: 10px;
+                width: calc(100% - 20px);
                 background: rgba(255, 255, 255, 0.95);
                 border-radius: 8px;
                 padding: 10px;
@@ -280,7 +280,7 @@ app.index_string = '''
 def render_page_content(pathname):
     try:
         logger.info(f"Rendering page: {pathname}")
-        
+
         if pathname == "/page-1" or pathname == "/" or not pathname:
             if OVERVIEW_MODULE_LOADED:
                 return get_overview_layout()
@@ -389,7 +389,7 @@ def get_emissions_error_layout():
                     ]),
                     html.P("Check the logs for specific import/initialization errors.")
                 ], color="danger"),
-                
+
                 # Show module status
                 dbc.Card([
                     dbc.CardBody([
@@ -400,7 +400,7 @@ def get_emissions_error_layout():
                         html.P(f"• Flux Forecast Module: {'✓ Loaded' if FLUX_FORECAST_MODULE_LOADED else '✗ Failed'}"),
                         html.Hr(),
                         html.H6("Error Details:"),
-                        html.Pre(EMISSIONS_ERROR or "No error details available", 
+                        html.Pre(EMISSIONS_ERROR or "No error details available",
                                 style={'fontSize': '12px', 'backgroundColor': '#f8f9fa', 'padding': '10px'})
                     ])
                 ])
@@ -430,7 +430,7 @@ def init_app():
             logger.info("Successfully initialized overview module")
         else:
             logger.error(f"Overview module not loaded: {OVERVIEW_ERROR}")
-        
+
         if FLUX_FORECAST_MODULE_LOADED:
             logger.info("Initializing flux_forecast module")
             init_flux_forecast()
@@ -438,7 +438,7 @@ def init_app():
             logger.info("Successfully initialized flux_forecast module")
         else:
             logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
-            
+
         if SURFACE_OBSERVATIONS_MODULE_LOADED:
             logger.info("Initializing surface_observations module")
             init_surface_observations()
@@ -446,7 +446,7 @@ def init_app():
             logger.info("Successfully initialized surface_observations module")
         else:
             logger.error(f"Surface observations module not loaded: {SURFACE_OBSERVATIONS_ERROR}")
-            
+
         if EMISSIONS_MODULE_LOADED:
             logger.info("Initializing emissions module")
             init_emissions()
@@ -494,7 +494,7 @@ if __name__ == '__main__':
     logger.info(f"Emissions module loaded: {EMISSIONS_MODULE_LOADED}")
     logger.info(f"Surface observations module loaded: {SURFACE_OBSERVATIONS_MODULE_LOADED}")
     logger.info(f"Flux forecast module loaded: {FLUX_FORECAST_MODULE_LOADED}")
-    
+
     if OVERVIEW_ERROR:
         logger.error(f"Overview module error: {OVERVIEW_ERROR}")
     if EMISSIONS_ERROR:
@@ -503,7 +503,7 @@ if __name__ == '__main__':
         logger.error(f"Surface observations module error: {SURFACE_OBSERVATIONS_ERROR}")
     if FLUX_FORECAST_ERROR:
         logger.error(f"Flux forecast module error: {FLUX_FORECAST_ERROR}")
-    
+
     app.run_server(
         host='0.0.0.0',
         port=port,
