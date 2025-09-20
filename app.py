@@ -14,7 +14,7 @@ import scipy
 import astropy
 import statsmodels
 
-# Import overview module
+# Import overview module (from Phase 4B)
 try:
     from pages.overview import init as init_overview
     from pages.overview import get_layout as get_overview_layout
@@ -25,18 +25,18 @@ except Exception as e:
     OVERVIEW_MODULE_LOADED = False
     OVERVIEW_ERROR = str(e)
 
-# Import emissions module (OCO-3 observations)
+# Import flux_forecast module (from Phase 4D)
 try:
-    from pages.emissions import init as init_emissions
-    from pages.emissions import get_layout as get_emissions_layout
-    from pages.emissions import register_callbacks as register_emissions_callbacks
-    EMISSIONS_MODULE_LOADED = True
-    EMISSIONS_ERROR = None
+    from pages.flux_forecast import init as init_flux_forecast
+    from pages.flux_forecast import get_layout as get_flux_forecast_layout
+    from pages.flux_forecast import register_callbacks as register_flux_forecast_callbacks
+    FLUX_FORECAST_MODULE_LOADED = True
+    FLUX_FORECAST_ERROR = None
 except Exception as e:
-    EMISSIONS_MODULE_LOADED = False
-    EMISSIONS_ERROR = str(e)
+    FLUX_FORECAST_MODULE_LOADED = False
+    FLUX_FORECAST_ERROR = str(e)
 
-# Import surface_observations module
+# Import surface_observations module - FROM PHASE 4F
 try:
     from pages.surface_observations import init as init_surface_observations
     from pages.surface_observations import get_layout as get_surface_observations_layout
@@ -47,27 +47,16 @@ except Exception as e:
     SURFACE_OBSERVATIONS_MODULE_LOADED = False
     SURFACE_OBSERVATIONS_ERROR = str(e)
 
-# Import flux_hindcast module (placeholder)
+# Import emissions module - NEW FOR THIS UPDATE
 try:
-    from pages.flux_hindcast import init as init_flux_hindcast
-    from pages.flux_hindcast import get_layout as get_flux_hindcast_layout
-    from pages.flux_hindcast import register_callbacks as register_flux_hindcast_callbacks
-    FLUX_HINDCAST_MODULE_LOADED = True
-    FLUX_HINDCAST_ERROR = None
+    from pages.emissions import init as init_emissions
+    from pages.emissions import get_layout as get_emissions_layout
+    from pages.emissions import register_callbacks as register_emissions_callbacks
+    EMISSIONS_MODULE_LOADED = True
+    EMISSIONS_ERROR = None
 except Exception as e:
-    FLUX_HINDCAST_MODULE_LOADED = False
-    FLUX_HINDCAST_ERROR = str(e)
-
-# Import flux_forecast module
-try:
-    from pages.flux_forecast import init as init_flux_forecast
-    from pages.flux_forecast import get_layout as get_flux_forecast_layout
-    from pages.flux_forecast import register_callbacks as register_flux_forecast_callbacks
-    FLUX_FORECAST_MODULE_LOADED = True
-    FLUX_FORECAST_ERROR = None
-except Exception as e:
-    FLUX_FORECAST_MODULE_LOADED = False
-    FLUX_FORECAST_ERROR = str(e)
+    EMISSIONS_MODULE_LOADED = False
+    EMISSIONS_ERROR = str(e)
 
 # Configure logging
 logging.basicConfig(
@@ -308,10 +297,7 @@ def render_page_content(pathname):
             else:
                 return get_surface_observations_error_layout()
         elif pathname == "/page-4":
-            if FLUX_HINDCAST_MODULE_LOADED:
-                return get_flux_hindcast_layout()
-            else:
-                return get_flux_hindcast_error_layout()
+            return get_hindcast_placeholder()
         elif pathname == "/page-5":
             if FLUX_FORECAST_MODULE_LOADED:
                 return get_flux_forecast_layout()
@@ -422,43 +408,15 @@ def get_emissions_error_layout():
         ])
     ])
 
-# NEW: Error layout if flux_hindcast module fails to load
-def get_flux_hindcast_error_layout():
+# Keep placeholder function for hindcast page
+def get_hindcast_placeholder():
     return dbc.Container([
-        dbc.Row([
-            dbc.Col([
-                html.H2("Emissions Hindcast/Nowcast - Module Load Error", className="mb-4"),
-                dbc.Alert([
-                    html.H4("Flux Hindcast Module Import Failed", className="alert-heading"),
-                    html.P(f"Error loading flux_hindcast module: {FLUX_HINDCAST_ERROR}"),
-                    html.Hr(),
-                    html.P("This indicates an issue with:"),
-                    html.Ul([
-                        html.Li("Module structure or import paths"),
-                        html.Li("Missing dependencies for hindcast analysis"),
-                        html.Li("Data access permissions"),
-                        html.Li("Incomplete placeholder implementation")
-                    ]),
-                    html.P("This module is currently under development.")
-                ], color="warning"),
-                
-                # Show module status
-                dbc.Card([
-                    dbc.CardBody([
-                        html.H5("Module Status Summary:"),
-                        html.P(f"• Overview Module: {'✓ Loaded' if OVERVIEW_MODULE_LOADED else '✗ Failed'}"),
-                        html.P(f"• OCO-3 Observations: {'✓ Loaded' if EMISSIONS_MODULE_LOADED else '✗ Failed'}"),
-                        html.P(f"• Surface Observations: {'✓ Loaded' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗ Failed'}"),
-                        html.P(f"• Hindcast Module: {'✓ Loaded' if FLUX_HINDCAST_MODULE_LOADED else '✗ Failed'}"),
-                        html.P(f"• Forecast Module: {'✓ Loaded' if FLUX_FORECAST_MODULE_LOADED else '✗ Failed'}"),
-                        html.Hr(),
-                        html.H6("Error Details:"),
-                        html.Pre(FLUX_HINDCAST_ERROR or "No error details available", 
-                                style={'fontSize': '12px', 'backgroundColor': '#f8f9fa', 'padding': '10px'})
-                    ])
-                ])
-            ])
-        ])
+        html.H2("Emissions Analysis (Hindcast/Nowcast)", className="mb-4"),
+        dbc.Alert([
+            html.H4("Placeholder Page"),
+            html.P(f"Module Status: Overview {'✓' if OVERVIEW_MODULE_LOADED else '✗'} | Emissions {'✓' if EMISSIONS_MODULE_LOADED else '✗'} | Surface Obs {'✓' if SURFACE_OBSERVATIONS_MODULE_LOADED else '✗'} | Flux Forecast {'✓' if FLUX_FORECAST_MODULE_LOADED else '✗'}"),
+            html.P("This page will be enabled in a future phase")
+        ], color="info")
     ])
 
 # Initialize and register callbacks
@@ -473,13 +431,13 @@ def init_app():
         else:
             logger.error(f"Overview module not loaded: {OVERVIEW_ERROR}")
         
-        if EMISSIONS_MODULE_LOADED:
-            logger.info("Initializing emissions module")
-            init_emissions()
-            register_emissions_callbacks(app)
-            logger.info("Successfully initialized emissions module")
+        if FLUX_FORECAST_MODULE_LOADED:
+            logger.info("Initializing flux_forecast module")
+            init_flux_forecast()
+            register_flux_forecast_callbacks(app)
+            logger.info("Successfully initialized flux_forecast module")
         else:
-            logger.error(f"Emissions module not loaded: {EMISSIONS_ERROR}")
+            logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
             
         if SURFACE_OBSERVATIONS_MODULE_LOADED:
             logger.info("Initializing surface_observations module")
@@ -489,30 +447,6 @@ def init_app():
         else:
             logger.error(f"Surface observations module not loaded: {SURFACE_OBSERVATIONS_ERROR}")
             
-        if FLUX_HINDCAST_MODULE_LOADED:
-            logger.info("Initializing flux_hindcast module")
-            init_flux_hindcast()
-            register_flux_hindcast_callbacks(app)
-            logger.info("Successfully initialized flux_hindcast module")
-        else:
-            logger.error(f"Flux hindcast module not loaded: {FLUX_HINDCAST_ERROR}")
-        
-        if FLUX_FORECAST_MODULE_LOADED:
-            logger.info("Initializing flux_forecast module")
-            init_flux_forecast()
-            register_flux_forecast_callbacks(app)
-            logger.info("Successfully initialized flux_forecast module")
-        else:
-            logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
-            
-        if FLUX_HINDCAST_MODULE_LOADED:
-            logger.info("Initializing flux_hindcast module")
-            init_flux_hindcast()
-            register_flux_hindcast_callbacks(app)
-            logger.info("Successfully initialized flux_hindcast module")
-        else:
-            logger.error(f"Flux hindcast module not loaded: {FLUX_HINDCAST_ERROR}")
-            
         if EMISSIONS_MODULE_LOADED:
             logger.info("Initializing emissions module")
             init_emissions()
@@ -520,14 +454,6 @@ def init_app():
             logger.info("Successfully initialized emissions module")
         else:
             logger.error(f"Emissions module not loaded: {EMISSIONS_ERROR}")
-            
-        if FLUX_FORECAST_MODULE_LOADED:
-            logger.info("Initializing flux_forecast module")
-            init_flux_forecast()
-            register_flux_forecast_callbacks(app)
-            logger.info("Successfully initialized flux_forecast module")
-        else:
-            logger.error(f"Flux forecast module not loaded: {FLUX_FORECAST_ERROR}")
     except Exception as e:
         logger.error(f"Error initializing modules: {e}")
 
@@ -541,21 +467,19 @@ def init_pathname(pathname):
         return "/page-1"
     return pathname
 
-# Health check endpoint - Updated to include all modules
+# Health check endpoint - Updated to include emissions module status
 @server.route('/health')
 def health_check():
     return {
         'status': 'healthy',
-        'phase': 'complete-module-integration',
+        'phase': 'updated-with-emissions-module',
         'overview_module_loaded': OVERVIEW_MODULE_LOADED,
         'emissions_module_loaded': EMISSIONS_MODULE_LOADED,
         'surface_observations_module_loaded': SURFACE_OBSERVATIONS_MODULE_LOADED,
-        'flux_hindcast_module_loaded': FLUX_HINDCAST_MODULE_LOADED,
         'flux_forecast_module_loaded': FLUX_FORECAST_MODULE_LOADED,
         'overview_error': OVERVIEW_ERROR,
         'emissions_error': EMISSIONS_ERROR,
         'surface_observations_error': SURFACE_OBSERVATIONS_ERROR,
-        'flux_hindcast_error': FLUX_HINDCAST_ERROR,
         'flux_forecast_error': FLUX_FORECAST_ERROR,
         'dependencies_loaded': True
     }, 200
@@ -565,11 +489,10 @@ init_app()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting LA Megacity Dashboard with all modules on port {port}")
+    logger.info(f"Starting LA Megacity Dashboard with emissions module on port {port}")
     logger.info(f"Overview module loaded: {OVERVIEW_MODULE_LOADED}")
     logger.info(f"Emissions module loaded: {EMISSIONS_MODULE_LOADED}")
     logger.info(f"Surface observations module loaded: {SURFACE_OBSERVATIONS_MODULE_LOADED}")
-    logger.info(f"Flux hindcast module loaded: {FLUX_HINDCAST_MODULE_LOADED}")
     logger.info(f"Flux forecast module loaded: {FLUX_FORECAST_MODULE_LOADED}")
     
     if OVERVIEW_ERROR:
@@ -578,8 +501,6 @@ if __name__ == '__main__':
         logger.error(f"Emissions module error: {EMISSIONS_ERROR}")
     if SURFACE_OBSERVATIONS_ERROR:
         logger.error(f"Surface observations module error: {SURFACE_OBSERVATIONS_ERROR}")
-    if FLUX_HINDCAST_ERROR:
-        logger.error(f"Flux hindcast module error: {FLUX_HINDCAST_ERROR}")
     if FLUX_FORECAST_ERROR:
         logger.error(f"Flux forecast module error: {FLUX_FORECAST_ERROR}")
     
