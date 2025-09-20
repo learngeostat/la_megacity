@@ -1,27 +1,36 @@
 FROM python:3.11-slim
 
-# Install system dependencies for GDAL before installing Python packages
-# - apt-get update: Refreshes the package list
-# - libgdal-dev: Contains the development headers needed to build fiona
-# - gdal-bin: Provides the `gdal-config` command-line tool
-# - rm -rf ...: Cleans up the apt cache to keep the image size small
+# Set the working directory early
+WORKDIR /app
+
+# --- Dependency Layers ---
+# These layers will be cached unless system dependencies or requirements.txt change.
+
+# 1. Install system dependencies for GDAL
+# This layer is very stable and will almost always be cached.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libgdal-dev gdal-bin && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
+# 2. Copy only the requirements file first
 COPY requirements.txt .
-# Now that GDAL is installed, this pip install will succeed
+
+# 3. Install Python packages
+# This layer will only be rebuilt if requirements.txt changes.
 RUN pip install --no-cache-dir -r requirements.txt
 
+
+# --- Application Layer ---
+# This is the only layer that will be rebuilt when you change your code.
+# Since it's just a copy operation, it's extremely fast.
 COPY . .
 
+
+# --- Final Configuration ---
 EXPOSE 8080
 
-# This is commented out for local development using the script,
-# but can be un-commented for deployment.
+# Commented out for local dev, un-comment for deployment
 # ENV GS_NO_SIGN_REQUEST=YES
 
-# Fixed: Use app:server and increase timeout
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "app:server"]
+
