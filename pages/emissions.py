@@ -90,9 +90,9 @@ def update_time_series_section(time_series_section):
 def load_geodata():
     """Load geographical data with proper error handling"""
     try:
-        census_tracts = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'census_tract_clipped.shp'))
-        zip_codes = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'zip_code_socab.shp'))
-        socab_boundary = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'socabbound.shp'))
+        census_tracts = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'census_tract_clipped.gpkg'))
+        zip_codes = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'zip_code_socab.gpkg'))
+        socab_boundary = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'socabbound.gpkg'))
         return census_tracts, zip_codes, socab_boundary
     except Exception:
         return None, None
@@ -1444,23 +1444,19 @@ def register_callbacks(app):
         
             # Create a temporary directory to store files for zipping
             with tempfile.TemporaryDirectory() as temp_dir:
-                shapefile_types = ['.shp', '.shx', '.dbf', '.prj']
                 
-                # --- Download ZIP code shapefiles ---
-                zip_base_gcs = f"{SHAPEFILE_PATH.rstrip('/')}/zip_code_socab"
-                zip_base_local = os.path.join(temp_dir, 'zip_code_socab')
-                for ext in shapefile_types:
-                    gcs_path = zip_base_gcs + ext
+                # --- Download GeoPackage files instead of shapefiles ---
+                geopackage_files = [
+                    ('zip_code_socab.gpkg', 'zip_code_socab.gpkg'),
+                    ('socabbound.gpkg', 'socabbound.gpkg'),
+                    ('census_tract_clipped.gpkg', 'census_tract_clipped.gpkg')  # Add this if needed
+                ]
+                
+                for gcs_filename, local_filename in geopackage_files:
+                    gcs_path = f"{SHAPEFILE_PATH.rstrip('/')}/{gcs_filename}"
+                    local_path = os.path.join(temp_dir, local_filename)
                     if fs.exists(gcs_path):
-                        fs.get(gcs_path, zip_base_local + ext)
-        
-                # --- Download SOCAB boundary shapefiles ---
-                socab_base_gcs = f"{SHAPEFILE_PATH.rstrip('/')}/socabbound"
-                socab_base_local = os.path.join(temp_dir, 'socabbound')
-                for ext in shapefile_types:
-                    gcs_path = socab_base_gcs + ext
-                    if fs.exists(gcs_path):
-                        fs.get(gcs_path, socab_base_local + ext)
+                        fs.get(gcs_path, local_path)
         
                 # --- Download OCO-3 CSV file ---
                 csv_path_gcs = f"{OCO3_DATA_PATH.rstrip('/')}/clipped_oco3_obs.csv"
@@ -1483,7 +1479,6 @@ def register_callbacks(app):
                     zip_buffer.getvalue(),
                     "oco3_spatial_data.zip"
                 )
-            
         @app.callback(
         Output("download-timeseries-data-content", "data"),
         Input("download-timeseries-data", "n_clicks"),

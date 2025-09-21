@@ -39,7 +39,7 @@ logging.basicConfig(
 EMISSIONS_GDF = None
 available_years = list(range(2025, 2055))
 
-GCS_SHAPEFILE_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard.shp"
+GCS_SHAPEFILE_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard.gpkg"
 GCS_SHAPEFILE_BASE = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard"
 
 

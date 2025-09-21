@@ -48,12 +48,12 @@ DATA_FILES = {
 
 # A centralized dictionary for all shapefiles. Geopandas reads the .shp file.
 SHAPEFILES = {
-    'socabbound': f"{SHAPEFILE_PATH}/socabbound.shp",
-    'paper_towers': f"{SHAPEFILE_PATH}/paper_towers.shp",
-    'census_tract_clipped': f"{SHAPEFILE_PATH}/census_tract_clipped.shp",
-    'zip_code_socab': f"{SHAPEFILE_PATH}/zip_code_socab.shp",
-    'zones_partitoned': f"{SHAPEFILE_PATH}/zones_partitoned.shp",
-    'census_tracts_emissions_dashboard': f"{SHAPEFILE_PATH}/census_tracts_emissions_dashboard.shp"
+    'socabbound': f"{SHAPEFILE_PATH}/socabbound.gpkg",
+    'paper_towers': f"{SHAPEFILE_PATH}/paper_towers.gpkg",
+    'census_tract_clipped': f"{SHAPEFILE_PATH}/census_tract_clipped.gpkg",
+    'zip_code_socab': f"{SHAPEFILE_PATH}/zip_code_socab.gpkg",
+    'zones_partitoned': f"{SHAPEFILE_PATH}/zones_partitoned.gpkg",
+    'census_tracts_emissions_dashboard': f"{SHAPEFILE_PATH}/census_tracts_emissions_dashboard.gpkg"
 }
 
 
