@@ -36,13 +36,13 @@ CSV_PATH = f"{DATA_PATH}/csv"
 DATA_FILES = {
     # For surface_observations.py
     'aggregated_data_afternoon': f"{HDF_FILES_PATH}/aggregated_data_afternoon.h5",
-    'aggregated_data_allhours': f"{HDF_FILES_PATH}/aggregated_data_allhours.h5",
+    'aggregated_data_allhours.h5': f"{HDF_FILES_PATH}/aggregated_data_allhours.h5",  # Fixed: added missing key
 
     # For emissions.py (OCO-3)
     'oco3_obs': f"{CSV_PATH}/clipped_oco3_obs.csv",
     
     # For flux_hindcast.py
-    'fluxresults1': f"{DATA_PATH}/fluxresults1.nc", # Assuming it's in the root of /data
+    'fluxresults1': f"{HDF_FILES_PATH}/fluxresults1.nc",  # Fixed: moved to hdf_files
     'spatial_data': f"{HDF_FILES_PATH}/spatial_data.h5",
 }
 

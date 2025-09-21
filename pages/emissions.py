@@ -463,10 +463,16 @@ def create_header_card():
                 ], width=10),
                 dbc.Col([
                     html.Div([
-                        dbc.Button([
-                            "Documentation ",
-                            html.I(className="fas fa-file-pdf")
-                        ], color="secondary", className="me-2", id="oco3-doc-button"),
+                        dbc.Button(
+                            [
+                                "Documentation ",
+                                html.I(className="fas fa-file-pdf")
+                            ],
+                            color="secondary",
+                            className="me-2",
+                            href="https://ocov3.jpl.nasa.gov/sams/",  # <-- ADD THE URL HERE
+                            target="_blank"  # <-- ADD THIS TO OPEN IN A NEW TAB
+                        ),
                         dbc.Button([
                             "Help ",
                             html.I(className="fas fa-question-circle")
@@ -653,7 +659,7 @@ def create_map_section():
         dbc.Collapse(
             dbc.CardBody([
                 html.Div([
-                    # Time Control Overlay - Made more compact
+                    # Time Control Overlay with precise positioning and reduced size
                     html.Div([
                         dbc.Row([
                             # Play/Pause Controls
@@ -665,14 +671,14 @@ def create_map_section():
                                         color="light",
                                         size="sm",
                                         className="me-1",
-                                        disabled=False  # Add initial disabled state
+                                        disabled=False
                                     ),
                                     dbc.Button(
                                         html.I(className="fas fa-pause"),
                                         id="pause-button",
                                         color="light",
                                         size="sm",
-                                        disabled=False  # Add initial disabled state
+                                        disabled=False
                                     )
                                 ])
                             ], width="auto", className="pe-2"),
@@ -682,7 +688,7 @@ def create_map_section():
                                 # Date Display Above Slider
                                 html.Div(
                                     id="slider-date-display",
-                                    className="text-center fw-bold mb-2"
+                                    className="text-center fw-bold small mb-0"
                                 ),
                                 # Time Slider
                                 dcc.Slider(
@@ -693,11 +699,24 @@ def create_map_section():
                                     value=0,
                                     marks=None,
                                     tooltip={"placement": "bottom", "always_visible": False},
-                                    disabled=False  # Add initial disabled state
+                                    disabled=False
                                 )
                             ], className="px-0")
-                        ], className="g-0 align-items-center mx-2")
-                    ], className="time-control-overlay"),
+                        ], className="g-0 align-items-center")
+                    ],
+                    # Final positioning and sizing
+                    style={
+                        'position': 'absolute',
+                        'top': '10px',
+                        'left': '10px',
+                        'right': '110px',
+                        'zIndex': '10',
+                        'background': 'rgba(255, 255, 255, 0.9)',
+                        'padding': '2px 10px 0px 10px', # FINAL PADDING FIX
+                        # Top, Right, Bottom (0px), Left
+                        'borderRadius': '5px',
+                        'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'
+                    }),
                     
                     # Main Map
                     dcc.Graph(

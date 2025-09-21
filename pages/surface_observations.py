@@ -16,7 +16,6 @@ import scipy as sc
 from astropy.stats import median_absolute_deviation
 import pyperclip
 from dash.exceptions import PreventUpdate
-
 import logging
 import sys
 
@@ -335,9 +334,9 @@ def load_data_from_gcs_hdf(gcs_path):
     """
     Reads a pandas HDFStore file from GCS and reconstructs the nested dictionaries.
     """
-    import pandas as pd
-    import gcsfs
-
+    import tempfile
+    import os
+    
     logging.info(f"Attempting to read HDFStore from {gcs_path}")
     fs = gcsfs.GCSFileSystem()
     
@@ -355,30 +354,42 @@ def load_data_from_gcs_hdf(gcs_path):
     }
 
     try:
-        # Open the remote file and use it with pandas HDFStore
-        with fs.open(gcs_path, 'rb') as f_gcs:
-            with pd.HDFStore(f_gcs, 'r') as store:
-                # Iterate through all the keys (paths) in the HDF5 file
-                for key in store.keys():
-                    # The key looks like '/raw/co2/H'
-                    parts = key.strip('/').split('/')
-                    if len(parts) != 3:
-                        continue # Skip any keys that aren't in the expected format
+        # Create a temporary file to download the HDF5 data
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                # Download the file from GCS to temporary local file
+                fs.get(gcs_path, temp_file.name)
+                
+                # Now use pandas HDFStore with the local temporary file
+                with pd.HDFStore(temp_file.name, 'r') as store:
+                    # Iterate through all the keys (paths) in the HDF5 file
+                    for key in store.keys():
+                        # The key looks like '/raw/co2/H'
+                        parts = key.strip('/').split('/')
+                        if len(parts) != 3:
+                            continue # Skip any keys that aren't in the expected format
 
-                    dict_name, gas_name, agg_name = parts
+                        dict_name, gas_name, agg_name = parts
 
-                    # Check if it's one of the top-level dicts we care about
-                    if dict_name in all_dicts:
-                        # If the gas key doesn't exist yet, create it
-                        if gas_name not in all_dicts[dict_name]:
-                            all_dicts[dict_name][gas_name] = {}
-                        
-                        # Read the DataFrame from the store and add it
-                        df = store.get(key)
-                        all_dicts[dict_name][gas_name][agg_name] = df
-                        logging.info(f"Successfully loaded DataFrame for key: {key}")
+                        # Check if it's one of the top-level dicts we care about
+                        if dict_name in all_dicts:
+                            # If the gas key doesn't exist yet, create it
+                            if gas_name not in all_dicts[dict_name]:
+                                all_dicts[dict_name][gas_name] = {}
+                            
+                            # Read the DataFrame from the store and add it
+                            df = store.get(key)
+                            all_dicts[dict_name][gas_name][agg_name] = df
+                            logging.info(f"Successfully loaded DataFrame for key: {key}")
+                            
+            finally:
+                # Clean up the temporary file
+                try:
+                    os.unlink(temp_file.name)
+                except OSError:
+                    pass  # File might already be deleted
 
-    except Exception as e:
+    except Exception:
         logging.exception(f"Failed to read HDFStore from {gcs_path}")
         # Return empty dicts on failure
         return {}, {}, {}, {}
@@ -723,7 +734,7 @@ def get_control_panel(site_options):
                     
                     # Gas Type Selection
                     dbc.Col([
-                        html.Label("Select Gas", className="form-label fw-bold"),
+                        html.Label("Gas", className="form-label fw-bold"),
                         dcc.Dropdown(
                             id='surface-gas-selector',
                             options=[
@@ -797,7 +808,7 @@ def get_control_panel(site_options):
                         )
                     ], md=2)
                 ]),          
-                # Second row - Time Slider and Y-axis controls with Time Period inputs underneath
+                # Second row - Time Slider and Y-axis/X-axis controls
                 dbc.Row([
                     # Time Slider Column
                     dbc.Col([
@@ -816,98 +827,60 @@ def get_control_panel(site_options):
                         ),
                     ], width=8),
                     
-                    # Y-axis Controls Column with Time Period inputs underneath
+                    # Y-axis and X-axis Time Controls Column
                     dbc.Col([
-                        html.Div([
-                            # Y-axis control row
-                            html.Div([
-                                html.Div([
-                                    html.Label("Y-Axis", className="form-label mb-0", 
-                                             style={'fontSize': '0.9rem', 'fontWeight': 'bold','textAlign': 'center', 'marginBottom': '2px'}),
-                                    dbc.Select(
-                                        id='y-axis-scale-type',
-                                        options=[
-                                            {'label': 'Auto', 'value': 'auto'},
-                                            {'label': 'Fixed', 'value': 'fixed'}
-                                        ],
-                                        value='auto',
-                                        size="sm",
-                                        style={'width': '140px'},
-                                    ),
-                                ], style={'marginRight': '15px'}),
-                                
-                                # Min control with Start underneath
-                                html.Div([
-                                    # Min control
-                                    html.Div([
-                                        html.Label("Min", className="form-label mb-0", 
-                                                 style={'fontSize': '0.9rem', 'fontWeight': 'bold','textAlign': 'center', 'marginBottom': '2px'}),
-                                        dbc.Input(
-                                            id='y-axis-min',
-                                            type='number',
-                                            placeholder='Min',
-                                            size="sm",
-                                            style={'width': '140px'},
-                                            disabled=True,
-                                            debounce=True,
-                                        ),
-                                    ], style={'marginBottom': '10px'}),
-                                    
-                                    # Start control (directly underneath Min)
-                                    html.Div([
-                                        html.Label("X-Axis: Start Time", className="form-label mb-0", 
-                                                 style={'fontSize': '0.9rem', 'fontWeight': 'bold', 'textAlign': 'center', 'marginBottom': '2px'}),
-                                        dbc.Input(
-                                            id='surface-start-date-input',
-                                            type='text',
-                                            placeholder='Start Date',
-                                            size="sm",
-                                            style={'width': '140px'},
-                                            debounce=True,
-                                            n_submit=0,
-                                        ),
-                                    ]),
-                                ], style={'marginRight': '15px', 'display': 'flex', 'flexDirection': 'column'}),
-                                
-                                # Max control with End underneath
-                                html.Div([
-                                    # Max control
-                                    html.Div([
-                                        html.Label("Max", className="form-label mb-0", 
-                                                 style={'fontSize': '0.9rem', 'fontWeight': 'bold','textAlign': 'center', 'marginBottom': '2px'}),
-                                        dbc.Input(
-                                            id='y-axis-max',
-                                            type='number',
-                                            placeholder='Max',
-                                            size="sm",
-                                            style={'width': '140px'},
-                                            disabled=True,
-                                            debounce=True,
-                                        ),
-                                    ], style={'marginBottom': '10px'}),
-                                    
-                                    # End control (directly underneath Max)
-                                    html.Div([
-                                        html.Label("X-Axis: End Time", className="form-label mb-0", 
-                                                 style={'fontSize': '0.9rem', 'fontWeight': 'bold', 'textAlign': 'center', 'marginBottom': '2px'}),
-                                        dbc.Input(
-                                            id='surface-end-date-input',
-                                            type='text',
-                                            placeholder='End Date',
-                                            size="sm",
-                                            style={'width': '140px'},
-                                            debounce=True,
-                                            n_submit=0,
-                                        ),
-                                    ]),
-                                ], style={'display': 'flex', 'flexDirection': 'column'}),
-                            ], style={'display': 'flex', 'alignItems': 'flex-start', 'justifyContent': 'space-between', 'width': '100%'}),
-                            
-                            html.Div(
-                                id='surface-period-text', 
-                                className="d-none"
-                            )
-                        ], className="d-flex flex-column"),
+                        # Row 1: Y-Axis Controls (Auto, Min, Max)
+                        dbc.Row([
+                            dbc.Col([
+                                html.Label("Y-Axis", className="form-label fw-bold small"),
+                                dbc.Select(
+                                    id='y-axis-scale-type',
+                                    options=[
+                                        {'label': 'Auto', 'value': 'auto'},
+                                        {'label': 'Fixed', 'value': 'fixed'}
+                                    ],
+                                    value='auto', size="sm"
+                                )
+                            ], md=4),
+                            dbc.Col([
+                                html.Label("Min", className="form-label fw-bold small"),
+                                dbc.Input(
+                                    id='y-axis-min', type='number', placeholder='Min',
+                                    size="sm", disabled=True, debounce=True
+                                )
+                            ], md=4),
+                            dbc.Col([
+                                html.Label("Max", className="form-label fw-bold small"),
+                                dbc.Input(
+                                    id='y-axis-max', type='number', placeholder='Max',
+                                    size="sm", disabled=True, debounce=True
+                                )
+                            ], md=4)
+                        ], align="end", className="mb-2"),
+
+                        # Row 2: X-Axis Time Inputs (Start, End)
+                        dbc.Row([
+                            dbc.Col([
+                                html.Label("X-Axis: Start Time", className="form-label fw-bold small"),
+                                dbc.Input(
+                                    id='surface-start-date-input', type='text',
+                                    placeholder='Start Date', size="sm",
+                                    debounce=True, n_submit=0
+                                )
+                            ], md=6),
+                            dbc.Col([
+                                html.Label("X-Axis: End Time", className="form-label fw-bold small"),
+                                dbc.Input(
+                                    id='surface-end-date-input', type='text',
+                                    placeholder='End Date', size="sm",
+                                    debounce=True, n_submit=0
+                                )
+                            ], md=6)
+                        ]),
+                        
+                        # Hidden div for period text
+                        html.Div(id='surface-period-text', className="d-none")
+
                     ], width=4),
                 ], className="mt-3")
             ]),
@@ -1137,8 +1110,42 @@ def get_data_for_visualization(selected_gas, selected_sites, time_agg, analysis_
         print(f"  Shape: {data.shape}")
         print(f"  Columns: {data.columns.tolist()}")
         
+        # CRITICAL FIX: Make a copy and fix datetime_UTC column
+        data_copy = data.copy()
+        
+        # Convert datetime_UTC to proper datetime if it's not already
+        if 'datetime_UTC' in data_copy.columns:
+            print(f"  datetime_UTC dtype before conversion: {data_copy['datetime_UTC'].dtype}")
+            print(f"  Sample datetime_UTC values: {data_copy['datetime_UTC'].head()}")
+            print(f"  Type of first datetime value: {type(data_copy['datetime_UTC'].iloc[0])}")
+            
+            # Handle different possible formats from HDF5 loading
+            if data_copy['datetime_UTC'].dtype == 'object':
+                # If it's object type, it might be numpy arrays or mixed types
+                # Convert each element to datetime
+                datetime_series = []
+                for i, val in enumerate(data_copy['datetime_UTC']):
+                    try:
+                        if isinstance(val, np.ndarray):
+                            # If it's a numpy array, take the first element
+                            val = val[0] if len(val) > 0 else val
+                        # Convert to pandas datetime
+                        datetime_series.append(pd.to_datetime(val))
+                    except Exception as e:
+                        print(f"  Error converting datetime at index {i}: {e}")
+                        # Use a default date or skip
+                        datetime_series.append(pd.NaT)
+                
+                data_copy['datetime_UTC'] = pd.Series(datetime_series, index=data_copy.index)
+            else:
+                # If it's already a datetime-like type, just ensure it's proper pandas datetime
+                data_copy['datetime_UTC'] = pd.to_datetime(data_copy['datetime_UTC'])
+            
+            print(f"  datetime_UTC dtype after conversion: {data_copy['datetime_UTC'].dtype}")
+            print(f"  Sample converted values: {data_copy['datetime_UTC'].head()}")
+        
         # Get available dates for filtering
-        available_dates = pd.to_datetime(data['datetime_UTC']).sort_values().unique()
+        available_dates = pd.to_datetime(data_copy['datetime_UTC']).sort_values().unique()
         print(f"\nDate range:")
         print(f"  Start: {available_dates[0]}")
         print(f"  End: {available_dates[-1]}")
@@ -1171,7 +1178,7 @@ def get_data_for_visualization(selected_gas, selected_sites, time_agg, analysis_
         print(f"  Site columns: {site_columns}")
         
         # Check if all required columns exist
-        missing_columns = [col for col in site_columns if col not in data.columns]
+        missing_columns = [col for col in site_columns if col not in data_copy.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
         
@@ -1179,7 +1186,20 @@ def get_data_for_visualization(selected_gas, selected_sites, time_agg, analysis_
         columns_to_keep = base_columns + site_columns
         
         # Filter data for required columns
-        filtered_data = data[columns_to_keep].copy()
+        filtered_data = data_copy[columns_to_keep].copy()
+        
+        # Ensure both datetime columns are timezone-naive for comparison
+        start_date = pd.to_datetime(start_date).tz_localize(None) if hasattr(start_date, 'tz') and start_date.tz else start_date
+        end_date = pd.to_datetime(end_date).tz_localize(None) if hasattr(end_date, 'tz') and end_date.tz else end_date
+        
+        # Ensure filtered_data datetime column is also timezone-naive
+        if hasattr(filtered_data['datetime_UTC'].iloc[0], 'tz') and filtered_data['datetime_UTC'].iloc[0].tz:
+            filtered_data['datetime_UTC'] = filtered_data['datetime_UTC'].dt.tz_localize(None)
+        
+        print(f"\nApplying date filter:")
+        print(f"  Start date type: {type(start_date)}")
+        print(f"  End date type: {type(end_date)}")
+        print(f"  DataFrame datetime type: {type(filtered_data['datetime_UTC'].iloc[0])}")
         
         # Apply time filter using slider values
         mask = (filtered_data['datetime_UTC'] >= start_date) & \

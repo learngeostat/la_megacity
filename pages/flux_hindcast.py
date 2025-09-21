@@ -29,7 +29,7 @@ import tempfile
 import zipfile
 import gcsfs
 import io
-
+import h5py
 
 
 import logging
@@ -65,6 +65,128 @@ feature_id_mapping = {
     'custom': 'Zones'
 }
 
+def debug_netcdf_file(filename):
+    """
+    Debug function to inspect NetCDF file on GCS
+    """
+    import gcsfs
+    import tempfile
+    import os
+    
+    fs = gcsfs.GCSFileSystem()
+    
+    try:
+        # Check file existence and properties
+        if not fs.exists(filename):
+            print(f"❌ File does not exist: {filename}")
+            return False
+        
+        file_info = fs.info(filename)
+        print(f"✓ File exists: {filename}")
+        print(f"  Size: {file_info.get('size', 'unknown')} bytes")
+        print(f"  Type: {file_info.get('type', 'unknown')}")
+        print(f"  Last modified: {file_info.get('updated', 'unknown')}")
+        
+        # Try to read first few bytes to check file signature
+        try:
+            with fs.open(filename, 'rb') as f:
+                first_bytes = f.read(16)
+                print(f"  First 16 bytes (hex): {first_bytes.hex()}")
+                print(f"  First 16 bytes (ascii): {first_bytes}")
+                
+                # Check for common file signatures
+                if first_bytes.startswith(b'\x89HDF'):
+                    print("  ✓ HDF5 signature detected")
+                elif first_bytes.startswith(b'CDF'):
+                    print("  ✓ NetCDF signature detected")
+                else:
+                    print("  ⚠️  Unknown file signature")
+                    
+        except Exception as e:
+            print(f"  ❌ Error reading file bytes: {e}")
+            
+        # Try downloading to temp file
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as temp_file:
+                fs.get(filename, temp_file.name)
+                temp_size = os.path.getsize(temp_file.name)
+                print(f"  Downloaded size: {temp_size} bytes")
+                
+                if temp_size != file_info.get('size', 0):
+                    print(f"  ⚠️  Size mismatch during download!")
+                
+                # Try to read with different tools
+                try:
+                    import h5py
+                    with h5py.File(temp_file.name, 'r') as h5f:
+                        print(f"  ✓ Can open as HDF5, keys: {list(h5f.keys())}")
+                except Exception as e:
+                    print(f"  ❌ Cannot open as HDF5: {e}")
+                
+                try:
+                    import netCDF4
+                    with netCDF4.Dataset(temp_file.name, 'r') as nc:
+                        print(f"  ✓ Can open with netCDF4, variables: {list(nc.variables.keys())}")
+                except Exception as e:
+                    print(f"  ❌ Cannot open with netCDF4: {e}")
+                
+                os.unlink(temp_file.name)
+                
+        except Exception as e:
+            print(f"  ❌ Error downloading file: {e}")
+            
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error accessing file: {e}")
+        return False
+
+def load_spatial_hdf_using_cfunc(gcs_path):
+    """
+    Load spatial HDF5 data from GCS using the working cfunc approach with temporary files.
+    This replicates the exact local functionality.
+    """
+    import tempfile
+    import os
+    
+    logger.info(f"Loading spatial HDF5 data from {gcs_path} using cfunc")
+    fs = gcsfs.GCSFileSystem()
+    
+    try:
+        # Create a temporary file to download the HDF5 data
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                # Download the file from GCS to temporary local file
+                logger.info(f"Downloading HDF5 file to temporary location: {temp_file.name}")
+                fs.get(gcs_path, temp_file.name)
+                
+                # Verify the file was downloaded correctly
+                temp_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded HDF5 file size: {temp_size} bytes")
+                
+                if temp_size == 0:
+                    raise ValueError("Downloaded HDF5 file is empty")
+                
+                # Now use the working cfunc function with the local temporary file
+                # This is the EXACT same call that works locally
+                spatial_data = cfunc.load_dicts_from_hdf(temp_file.name, ['zip', 'census', 'custom'])
+                logger.info(f"Successfully loaded spatial data using cfunc with keys: {list(spatial_data.keys())}")
+                
+                return spatial_data
+                
+            finally:
+                # Clean up the temporary file
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary HDF5 file")
+                except OSError as e:
+                    logger.warning(f"Could not clean up temporary file {temp_file.name}: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to load spatial HDF5 data from {gcs_path}: {e}")
+        return {}
+
+
 def check_gcs_files():
     """Debug function to check if required files exist on GCS"""
     fs = gcsfs.GCSFileSystem()
@@ -90,13 +212,170 @@ def check_gcs_files():
             except Exception as e:
                 print(f"Error listing directory {directory}: {e}")
 
+def load_spatial_netcdf_data(gcs_path):
+    """
+    Load spatial NetCDF data from GCS.
+    """
+    import tempfile
+    import os
+    import xarray as xr
+    
+    logger.info(f"Loading spatial NetCDF data from {gcs_path}")
+    fs = gcsfs.GCSFileSystem()
+    
+    spatial_data = {}
+    
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as temp_file:
+            try:
+                # Download the NetCDF file from GCS
+                logger.info(f"Downloading NetCDF file to temporary location: {temp_file.name}")
+                fs.get(gcs_path, temp_file.name)
+                
+                downloaded_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded NetCDF file size: {downloaded_size} bytes")
+                
+                # Load the NetCDF dataset
+                with xr.open_dataset(temp_file.name) as ds:
+                    logger.info(f"NetCDF data variables: {list(ds.data_vars)}")
+                    logger.info(f"NetCDF coordinates: {list(ds.coords)}")
+                    
+                    # Convert each data variable to DataFrame
+                    for var_name in ds.data_vars:
+                        var = ds[var_name]
+                        logger.info(f"Processing {var_name} with shape {var.shape} and dims {var.dims}")
+                        
+                        if len(var.dims) == 2:
+                            # Convert to DataFrame
+                            if var.dims[1] == 'time':
+                                # Flux data: (regions, time)
+                                df = var.to_pandas()
+                            elif var.dims[1] == 'coords':
+                                # Centroids: (regions, coords)
+                                df = var.to_pandas()
+                            else:
+                                # Fallback: convert with default indexing
+                                df = var.to_pandas()
+                            
+                            spatial_data[var_name] = df
+                            logger.info(f"Converted {var_name} to DataFrame with shape {df.shape}")
+                            
+                            if hasattr(df.columns, 'dtype') and 'datetime' in str(df.columns.dtype):
+                                logger.info(f"  Time range: {df.columns[0]} to {df.columns[-1]}")
+                            
+                            logger.info(f"  Index name: {df.index.name}")
+                            logger.info(f"  Sample indices: {df.index[:3].tolist()}")
+                        else:
+                            logger.warning(f"Skipping {var_name} with unexpected dimensions: {var.dims}")
+                
+                logger.info(f"Successfully loaded {len(spatial_data)} datasets from NetCDF")
+                
+            finally:
+                # Clean up the temporary file
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary NetCDF file")
+                except OSError:
+                    pass
+
+    except Exception as e:
+        logger.error(f"Failed to load spatial NetCDF data from {gcs_path}: {e}")
+        return {}
+
+    return spatial_data
+
+
+
+def manually_reconstruct_dataframe(hdf_file_path, dataset_path, category):
+    """
+    Manually reconstruct DataFrame from HDF5 components when pd.HDFStore fails.
+    """
+    try:
+        logger.info(f"Manually reconstructing DataFrame for {dataset_path}")
+        
+        with h5py.File(hdf_file_path, 'r') as f:
+            # Remove leading slash for h5py access
+            clean_path = dataset_path[1:] if dataset_path.startswith('/') else dataset_path
+            
+            if clean_path not in f:
+                logger.error(f"Dataset {clean_path} not found in HDF5 file")
+                return None
+                
+            dataset_group = f[clean_path]
+            
+            # Read the DataFrame components
+            values = dataset_group['block0_values'][:]
+            
+            # Read and process index (should be geographic IDs)
+            if 'axis0' in dataset_group:
+                index_data = dataset_group['axis0'][:]
+                if index_data.dtype.kind == 'S':  # String/bytes
+                    index_data = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in index_data]
+            else:
+                index_data = range(values.shape[0])
+            
+            # Read and process columns (should be time data)
+            if 'axis1' in dataset_group:
+                column_data = dataset_group['axis1'][:]
+                logger.info(f"Raw column data type: {column_data.dtype}")
+                logger.info(f"Raw column data sample: {column_data[:5]}")
+                
+                if column_data.dtype.kind == 'S':  # String/bytes
+                    column_data = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in column_data]
+                    logger.info(f"Decoded column data sample: {column_data[:5]}")
+                
+                # Try to convert to datetime - the key fix for the datetime64[ns] issue
+                try:
+                    # First try: assume these are Unix timestamps in seconds
+                    if isinstance(column_data[0], (int, float)) or (isinstance(column_data[0], str) and column_data[0].isdigit()):
+                        numeric_data = [float(x) for x in column_data]
+                        column_data = pd.to_datetime(numeric_data, unit='s')
+                        logger.info(f"Converted numeric timestamps to datetime")
+                    else:
+                        # Second try: direct datetime conversion
+                        column_data = pd.to_datetime(column_data)
+                        logger.info(f"Converted string data to datetime")
+                    
+                    logger.info(f"Final datetime range: {column_data[0]} to {column_data[-1]}")
+                    
+                except Exception as e:
+                    logger.warning(f"Could not convert columns to datetime: {e}")
+                    # Keep as original format if conversion fails
+                    pass
+            else:
+                column_data = range(values.shape[1])
+            
+            # Create the DataFrame
+            df = pd.DataFrame(values, index=index_data, columns=column_data)
+            
+            # Set proper index name based on category
+            if category == 'zip':
+                df.index.name = 'ZIP_CODE'
+            elif category == 'census':
+                df.index.name = 'TRACTCE'
+            elif category == 'custom':
+                df.index.name = 'Zones'
+            
+            logger.info(f"Reconstructed DataFrame shape: {df.shape}")
+            logger.info(f"Index type: {type(df.index)}")
+            logger.info(f"Column type: {type(df.columns)}")
+            logger.info(f"Sample index values: {df.index[:3].tolist()}")
+            logger.info(f"Sample column values: {df.columns[:3].tolist()}")
+            
+            return df
+            
+    except Exception as e:
+        logger.error(f"Manual reconstruction failed for {dataset_path}: {e}")
+        return None
+
+
 
 def init():
-    """Initialize flux forecast components with detailed logging."""
+    """Initialize flux forecast components with NetCDF-based spatial data loading."""
     global FLUX_DATA, UNCERTAINTY_DATA, DATES, LAT, LON, LAT_GRID, LON_GRID, available_dates
     global ZIP_DATA, CENSUS_DATA, CUSTOM_DATA
     
-    logger.info("--- Starting flux hindcast data initialization ---")
+    logger.info("--- Starting flux hindcast data initialization with NetCDF ---")
     check_gcs_files()
     
     try:
@@ -105,9 +384,8 @@ def init():
         
         # --- Step 1: Load NetCDF data ---
         filename = f"{GCS_NC_FOLDER_PATH}fluxresults1.nc" 
-        logger.info(f"Attempting to load NetCDF data from: {filename}")
+        logger.info(f"Loading NetCDF data from: {filename}")
         
-        # Check if file exists on GCS
         if not fs.exists(filename):
             logger.error(f"NetCDF file does not exist on GCS: {filename}")
             return False
@@ -124,39 +402,453 @@ def init():
         LAT_GRID = data_dict['lat_grid']
         LON_GRID = data_dict['lon_grid']
         available_dates = [pd.to_datetime(t, unit='s') for t in DATES]
-        logger.info(f"Unpacked NetCDF data. Found {len(available_dates)} available dates.")
+        
+        logger.info(f"NetCDF loaded: {len(available_dates)} dates from {available_dates[0]} to {available_dates[-1]}")
 
-        # --- Step 2: Load spatial aggregation data from HDF5 ---
+        # --- Step 2: Load spatial aggregation data from NetCDF ---
         try:
-            spatial_hdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.h5"
-            logger.info(f"Attempting to load HDF5 spatial data from: {spatial_hdf_filename}")
+            spatial_netcdf_filename = f"{GCS_HDF_FOLDER_PATH}spatial_data.nc"
+            logger.info(f"Loading spatial NetCDF data from: {spatial_netcdf_filename}")
             
-            # Check if HDF5 file exists on GCS
-            if not fs.exists(spatial_hdf_filename):
-                logger.warning(f"HDF5 file does not exist on GCS: {spatial_hdf_filename}")
+            if not fs.exists(spatial_netcdf_filename):
+                logger.warning(f"Spatial NetCDF file does not exist on GCS: {spatial_netcdf_filename}")
                 ZIP_DATA, CENSUS_DATA, CUSTOM_DATA = {}, {}, {}
             else:
-                spatial_data = cfunc.load_dicts_from_hdf(spatial_hdf_filename, ['zip', 'census', 'custom'])
-                logger.info("Successfully loaded HDF5 data.")
+                # Load spatial data using NetCDF
+                spatial_data = load_spatial_netcdf_data(spatial_netcdf_filename)
+                logger.info("Successfully loaded spatial NetCDF data.")
                 
-                # Store the data directly as loaded from HDF
+                # Store the data
                 ZIP_DATA = {k: v for k, v in spatial_data.items() if k.startswith('zip_')}
                 CENSUS_DATA = {k: v for k, v in spatial_data.items() if k.startswith('census_')}
                 CUSTOM_DATA = {k: v for k, v in spatial_data.items() if k.startswith('custom_')}
-                logger.info("Successfully parsed and stored spatial aggregation data.")
+                
+                logger.info(f"Final data keys:")
+                logger.info(f"  ZIP: {list(ZIP_DATA.keys())}")
+                logger.info(f"  CENSUS: {list(CENSUS_DATA.keys())}")
+                logger.info(f"  CUSTOM: {list(CUSTOM_DATA.keys())}")
+                
+                # Verify data loaded correctly
+                for agg_type in ['zip', 'census', 'custom']:
+                    est_key = f'{agg_type}_est_flux'
+                    unc_key = f'{agg_type}_unc_flux'
+                    centroid_key = f'{agg_type}_centroids'
+                    
+                    if est_key in spatial_data and unc_key in spatial_data:
+                        est_df = spatial_data[est_key]
+                        unc_df = spatial_data[unc_key]
+                        logger.info(f"{agg_type} aggregation:")
+                        logger.info(f"  Est flux shape: {est_df.shape}")
+                        logger.info(f"  Unc flux shape: {unc_df.shape}")
+                        logger.info(f"  Time range: {est_df.columns[0]} to {est_df.columns[-1]}")
+                        logger.info(f"  Index name: {est_df.index.name}")
+                        logger.info(f"  Sample regions: {est_df.index[:3].tolist()}")
+                        
+                        if centroid_key in spatial_data:
+                            centroid_df = spatial_data[centroid_key]
+                            logger.info(f"  Centroids shape: {centroid_df.shape}")
+                    else:
+                        logger.warning(f"Missing {agg_type} flux data - est_key: {est_key in spatial_data}, unc_key: {unc_key in spatial_data}")
+                
+                logger.info("Spatial data loading completed successfully.")
             
         except Exception:
-            # This will log the full error if HDF5 loading fails
-            logger.error("Failed to load or process HDF5 spatial aggregation data.", exc_info=True)
+            logger.error("Failed to load spatial aggregation data.", exc_info=True)
             ZIP_DATA, CENSUS_DATA, CUSTOM_DATA = {}, {}, {}
         
-        logger.info("--- Flux hindcast data initialization successful. ---")
+        logger.info("--- Flux hindcast initialization successful ---")
         return True
         
-    except Exception:
-        # THIS IS THE MOST IMPORTANT PART: It will log the full traceback for any failure
-        logger.error("--- A critical error occurred during flux hindcast data initialization. ---", exc_info=True)
+    except Exception as e:
+        logger.error("--- Critical error in flux hindcast initialization ---", exc_info=True)
         return False
+    
+def load_spatial_hdf_data_with_time_debug(gcs_path):
+    """
+    Load spatial HDF5 data with detailed time field debugging.
+    """
+    import tempfile
+    import os
+    import h5py
+    import pandas as pd
+    import numpy as np
+    
+    logger.info(f"Loading spatial HDF5 data from {gcs_path} with time debugging")
+    fs = gcsfs.GCSFileSystem()
+    
+    spatial_data = {}
+    
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                fs.get(gcs_path, temp_file.name)
+                downloaded_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded HDF5 file size: {downloaded_size} bytes")
+                
+                # Open with h5py to examine time fields
+                with h5py.File(temp_file.name, 'r') as f:
+                    
+                    # First, examine one flux dataset in detail for time debugging
+                    if 'zip/zip_est_flux' in f:
+                        logger.info("\n=== HDF5 TIME FIELD ANALYSIS (zip_est_flux) ===")
+                        flux_group = f['zip/zip_est_flux']
+                        
+                        # Examine axis1 (columns) which should contain time info
+                        if 'axis1' in flux_group:
+                            axis1_data = flux_group['axis1'][:]
+                            logger.info(f"HDF5 axis1 type: {type(axis1_data)}")
+                            logger.info(f"HDF5 axis1 dtype: {axis1_data.dtype}")
+                            logger.info(f"HDF5 axis1 shape: {axis1_data.shape}")
+                            logger.info(f"HDF5 raw axis1 values (first 10): {axis1_data[:10]}")
+                            logger.info(f"HDF5 axis1 as strings (first 10): {[str(x) for x in axis1_data[:10]]}")
+                            
+                            # Try different conversion approaches
+                            if axis1_data.dtype.kind == 'S':  # String/bytes
+                                decoded_values = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in axis1_data[:10]]
+                                logger.info(f"HDF5 decoded string values: {decoded_values}")
+                            elif axis1_data.dtype.kind in ['i', 'f']:  # Integer or float
+                                logger.info(f"HDF5 numeric values (first 10): {axis1_data[:10]}")
+                                # Try converting as timestamps
+                                try:
+                                    converted_times = pd.to_datetime(axis1_data[:10], unit='s')
+                                    logger.info(f"HDF5 converted with unit='s': {converted_times}")
+                                except Exception as e:
+                                    logger.info(f"Failed unit='s' conversion: {e}")
+                                
+                                try:
+                                    converted_times_ns = pd.to_datetime(axis1_data[:10], unit='ns')
+                                    logger.info(f"HDF5 converted with unit='ns': {converted_times_ns}")
+                                except Exception as e:
+                                    logger.info(f"Failed unit='ns' conversion: {e}")
+                    
+                    # Try to load datasets using existing pandas method for comparison
+                    datasets_to_try = ['zip/zip_est_flux', 'zip/zip_centroids']
+                    
+                    for dataset_path in datasets_to_try:
+                        try:
+                            logger.info(f"\nTrying to load {dataset_path} with pandas...")
+                            df = pd.read_hdf(temp_file.name, key=dataset_path)
+                            key_name = dataset_path.replace('/', '_')
+                            spatial_data[key_name] = df
+                            logger.info(f"Successfully loaded {key_name} with shape {df.shape}")
+                            
+                            if 'flux' in dataset_path:
+                                logger.info(f"  Column type: {type(df.columns)}")
+                                logger.info(f"  Column dtype: {df.columns.dtype}")
+                                logger.info(f"  First 5 columns: {df.columns[:5]}")
+                                
+                        except Exception as e:
+                            logger.warning(f"Failed to load {dataset_path} with pandas: {e}")
+                
+            finally:
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary HDF5 file")
+                except OSError:
+                    pass
+
+    except Exception as e:
+        logger.error(f"Failed to load spatial HDF5 data from {gcs_path}: {e}")
+        return {}
+
+    return spatial_data
+
+
+def load_spatial_hdf_data(gcs_path):
+    """
+    Quick fix: Extract data values from HDF5 and use NetCDF time coordinates.
+    """
+    import tempfile
+    import os
+    import pandas as pd
+    import h5py
+    import numpy as np
+    
+    logger.info(f"Loading spatial HDF5 data with NetCDF time coordinates")
+    fs = gcsfs.GCSFileSystem()
+    
+    spatial_data = {}
+    
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+            try:
+                fs.get(gcs_path, temp_file.name)
+                downloaded_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded HDF5 file size: {downloaded_size} bytes")
+                
+                # Get the correct time coordinates from NetCDF globals
+                if DATES is not None:
+                    correct_time_coords = pd.to_datetime(DATES, unit='s')
+                    logger.info(f"Using NetCDF time coordinates: {correct_time_coords[0]} to {correct_time_coords[-1]}")
+                else:
+                    logger.error("NetCDF DATES not available - cannot proceed")
+                    return {}
+                
+                categories = ['zip', 'census', 'custom']
+                
+                for category in categories:
+                    logger.info(f"Processing category: {category}")
+                    
+                    # Load centroids normally (they work fine)
+                    centroids_path = f'/{category}/{category}_centroids'
+                    try:
+                        with pd.HDFStore(temp_file.name, mode='r') as store:
+                            if centroids_path in store:
+                                spatial_data[f'{category}_centroids'] = store[centroids_path]
+                                logger.info(f"Loaded {category}_centroids")
+                    except Exception as e:
+                        logger.error(f"Failed to load centroids for {category}: {e}")
+                    
+                    # Extract flux data values and reconstruct with correct time
+                    for flux_type in ['est_flux', 'unc_flux']:
+                        try:
+                            flux_path = f'{category}/{category}_{flux_type}'
+                            
+                            with h5py.File(temp_file.name, 'r') as f:
+                                if flux_path in f:
+                                    dataset_group = f[flux_path]
+                                    values = dataset_group['block0_values'][:]
+                                    
+                                    # Get geographic indices (axis0)
+                                    if 'axis0' in dataset_group:
+                                        index_data = dataset_group['axis0'][:]
+                                        if index_data.dtype.kind == 'S':
+                                            index_data = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in index_data]
+                                    else:
+                                        index_data = range(values.shape[0])
+                                    
+                                    logger.info(f"Raw data shape for {category}_{flux_type}: {values.shape}")
+                                    logger.info(f"Index data length: {len(index_data)}")
+                                    logger.info(f"Time coords length: {len(correct_time_coords)}")
+                                    
+                                    # Determine correct orientation and transpose if needed
+                                    if category == 'zip':
+                                        # ZIP: 488x488, should be regions x time
+                                        if values.shape[0] == len(correct_time_coords) and values.shape[1] == len(index_data):
+                                            # Data is time x regions, need to transpose
+                                            values = values.T
+                                            logger.info(f"Transposed ZIP data to: {values.shape}")
+                                    elif category == 'census':
+                                        # Census: shape was (3750, 488), should be regions x time
+                                        if values.shape[1] == len(correct_time_coords):
+                                            # Data is already regions x time, no transpose needed
+                                            logger.info(f"Census data orientation correct: {values.shape}")
+                                        else:
+                                            values = values.T
+                                            logger.info(f"Transposed census data to: {values.shape}")
+                                    elif category == 'custom':
+                                        # Custom: shape was (5, 488), should be regions x time  
+                                        if values.shape[1] == len(correct_time_coords):
+                                            # Data is already regions x time, no transpose needed
+                                            logger.info(f"Custom data orientation correct: {values.shape}")
+                                        else:
+                                            values = values.T
+                                            logger.info(f"Transposed custom data to: {values.shape}")
+                                    
+                                    # Create DataFrame with correct time coordinates
+                                    if values.shape[1] == len(correct_time_coords):
+                                        df = pd.DataFrame(values, index=index_data, columns=correct_time_coords)
+                                        
+                                        # Set proper index name
+                                        if category == 'zip':
+                                            df.index.name = 'ZIP_CODE'
+                                        elif category == 'census':
+                                            df.index.name = 'TRACTCE'
+                                        elif category == 'custom':
+                                            df.index.name = 'Zones'
+                                        
+                                        spatial_data[f'{category}_{flux_type}'] = df
+                                        logger.info(f"Successfully created {category}_{flux_type} with shape {df.shape}")
+                                        logger.info(f"  Time range: {df.columns[0]} to {df.columns[-1]}")
+                                        logger.info(f"  Sample regions: {df.index[:3].tolist()}")
+                                    else:
+                                        logger.error(f"Shape mismatch for {category}_{flux_type}: values={values.shape}, time={len(correct_time_coords)}")
+                                        
+                        except Exception as e:
+                            logger.error(f"Failed to process {category}_{flux_type}: {e}")
+                
+                logger.info(f"Successfully loaded spatial data with keys: {list(spatial_data.keys())}")
+                
+            finally:
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary HDF5 file")
+                except OSError:
+                    pass
+
+    except Exception as e:
+        logger.error(f"Failed to load spatial HDF5 data from {gcs_path}: {e}")
+        return {}
+
+    return spatial_data
+
+def load_netcdf_data(filename):
+    """
+    Load NetCDF data from GCS with robust error handling and file validation.
+
+    Args:
+        filename (str): GCS path to the NetCDF file.
+
+    Returns:
+        dict: Dictionary containing flux, uncertainty, and metadata.
+    """
+    import gcsfs
+    import tempfile
+    import os
+    import shutil
+    import traceback
+    import xarray as xr
+    import numpy as np
+    
+    # Initialize GCS filesystem
+    fs = gcsfs.GCSFileSystem()
+    
+    try:
+        logger.info("Starting NetCDF data loading process...")
+        
+        # Check if file exists first
+        if not fs.exists(filename):
+            raise FileNotFoundError(f"NetCDF file not found on GCS: {filename}")
+        
+        # Get file info to verify it's accessible
+        file_info = fs.info(filename)
+        file_size = file_info.get('size', 0)
+        logger.info(f"NetCDF file size: {file_size} bytes")
+        
+        if file_size == 0:
+            raise ValueError("NetCDF file appears to be empty on GCS")
+        
+        # Create a temporary file with a more explicit approach
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.nc', prefix='netcdf_')
+        logger.info(f"Created temporary file: {temp_path}")
+        
+        try:
+            # Close the file descriptor since we'll write to it differently
+            os.close(temp_fd)
+            
+            # Download with explicit binary mode and buffering
+            logger.info(f"Starting download from GCS to temporary location...")
+            
+            with fs.open(filename, 'rb') as gcs_file:
+                with open(temp_path, 'wb') as local_file:
+                    # Copy in chunks to handle large files
+                    shutil.copyfileobj(gcs_file, local_file, length=16*1024*1024)  # 16MB chunks
+            
+            logger.info("Download completed successfully")
+            
+            # Verify the downloaded file
+            if not os.path.exists(temp_path):
+                raise ValueError("Temporary file was not created properly")
+                
+            downloaded_size = os.path.getsize(temp_path)
+            logger.info(f"Downloaded file size: {downloaded_size} bytes")
+            
+            if downloaded_size != file_size:
+                raise ValueError(f"File size mismatch: expected {file_size}, got {downloaded_size}")
+            
+            if downloaded_size == 0:
+                raise ValueError("Downloaded NetCDF file is empty")
+            
+            # Try to open with different engines as fallback
+            dataset = None
+            engines_to_try = ['h5netcdf', 'netcdf4']
+            
+            logger.info("Attempting to open NetCDF dataset...")
+            
+            for engine in engines_to_try:
+                try:
+                    logger.info(f"Trying engine: {engine}")
+                    dataset = xr.open_dataset(temp_path, engine=engine)
+                    logger.info(f"Successfully opened NetCDF with engine: {engine}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to open with engine {engine}: {e}")
+                    if dataset is not None:
+                        dataset.close()
+                    dataset = None
+                    continue
+            
+            if dataset is None:
+                raise ValueError("Unable to open NetCDF file with any available engine")
+            
+            # Verify required variables exist
+            required_vars = ['flux', 'uncertainty', 'time', 'lat', 'lon', 'lat_grid', 'lon_grid']
+            missing_vars = [var for var in required_vars if var not in dataset.variables]
+            
+            if missing_vars:
+                dataset.close()
+                raise ValueError(f"NetCDF file missing required variables: {missing_vars}")
+            
+            logger.info(f"NetCDF contains variables: {list(dataset.variables.keys())}")
+            logger.info(f"NetCDF dimensions: {dict(dataset.dims)}")
+
+            # Read variables with error handling
+            try:
+                logger.info("Reading flux data...")
+                flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+                logger.info(f"Flux data shape: {flux.shape}")
+                
+                logger.info("Reading uncertainty data...")
+                uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+                logger.info(f"Uncertainty data shape: {uncertainty.shape}")
+                
+                logger.info("Reading time data...")
+                time = dataset['time'].values
+                logger.info(f"Time data shape: {time.shape}, dtype: {time.dtype}")
+                
+                logger.info("Reading coordinate data...")
+                lat = dataset['lat'].values.astype(np.float32)
+                lon = dataset['lon'].values.astype(np.float32)
+                lat_grid = dataset['lat_grid'].values.T.astype(np.float32)
+                lon_grid = dataset['lon_grid'].values.T.astype(np.float32)
+                
+                logger.info(f"Coordinate data shapes - lat: {lat.shape}, lon: {lon.shape}")
+                logger.info(f"Grid shapes - lat_grid: {lat_grid.shape}, lon_grid: {lon_grid.shape}")
+                
+                logger.info("Successfully loaded all NetCDF variables")
+                
+                # Close the dataset
+                dataset.close()
+                logger.info("Dataset closed successfully")
+                
+                result_dict = {
+                    'flux': flux,
+                    'uncertainty': uncertainty,
+                    'time': time,
+                    'latitude': lat,
+                    'longitude': lon,
+                    'lat_grid': lat_grid,
+                    'lon_grid': lon_grid,
+                }
+                
+                logger.info("Created result dictionary successfully")
+                return result_dict
+                
+            except Exception as e:
+                logger.error(f"Error reading NetCDF variables: {e}")
+                logger.error(f"Variable read error traceback: {traceback.format_exc()}")
+                dataset.close()
+                raise ValueError(f"Error reading NetCDF variables: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error during NetCDF processing: {e}")
+            logger.error(f"Processing error traceback: {traceback.format_exc()}")
+            raise
+            
+        finally:
+            # Clean up the temporary file
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                    logger.info("Cleaned up temporary NetCDF file")
+            except OSError as e:
+                logger.warning(f"Could not clean up temporary file {temp_path}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Critical error in load_netcdf_data: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
     
     
 def create_help_modal():
@@ -292,7 +984,8 @@ def get_spatial_data(agg_type):
         }[agg_type]
         
         if not data_dict:
-            raise KeyError(f"No data available for {agg_type} aggregation")
+            logger.warning(f"No data available for {agg_type} aggregation")
+            return None, None
             
         # Get the keys with the correct prefix
         est_flux_key = f'{agg_type}_est_flux'
@@ -303,72 +996,147 @@ def get_spatial_data(agg_type):
         unc_flux = data_dict.get(unc_flux_key)
         
         if est_flux is None or unc_flux is None:
-            print(f"Warning: Missing data for {agg_type} aggregation")
-            print(f"Available keys: {list(data_dict.keys())}")
+            logger.warning(f"Missing data for {agg_type} aggregation")
+            logger.warning(f"Available keys: {list(data_dict.keys())}")
+            logger.warning(f"Looking for: {est_flux_key}, {unc_flux_key}")
             return None, None
             
+        logger.info(f"Retrieved {agg_type} data - est_flux: {est_flux.shape}, unc_flux: {unc_flux.shape}")
         return est_flux, unc_flux
     
     except Exception as e:
-        print(f"Error getting {agg_type} data: {e}")
-        print(f"Data dictionary for {agg_type}: {data_dict if 'data_dict' in locals() else 'Not created'}")
+        logger.error(f"Error getting {agg_type} data: {e}")
         return None, None
 
-def load_netcdf_data(filename):
-    """
-    Load NetCDF data from GCS and ensure it is read in [latitude, longitude, time] order.
 
-    Args:
-        filename (str): GCS path to the NetCDF file.
+# def load_netcdf_data(filename):
+#     """
+#     Load NetCDF data from GCS with robust error handling and file validation.
 
-    Returns:
-        dict: Dictionary containing flux, uncertainty, and metadata.
-    """
-    import gcsfs
-    import tempfile
-    import os
+#     Args:
+#         filename (str): GCS path to the NetCDF file.
+
+#     Returns:
+#         dict: Dictionary containing flux, uncertainty, and metadata.
+#     """
+#     import gcsfs
+#     import tempfile
+#     import os
+#     import shutil
     
-    # Initialize GCS filesystem
-    fs = gcsfs.GCSFileSystem()
+#     # Initialize GCS filesystem
+#     fs = gcsfs.GCSFileSystem()
     
-    # Create a temporary file to download the NetCDF data
-    with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as temp_file:
-        try:
-            # Download the file from GCS to temporary local file
-            fs.get(filename, temp_file.name)
+#     try:
+#         # Check if file exists first
+#         if not fs.exists(filename):
+#             raise FileNotFoundError(f"NetCDF file not found on GCS: {filename}")
+        
+#         # Get file info to verify it's accessible
+#         file_info = fs.info(filename)
+#         file_size = file_info.get('size', 0)
+#         logger.info(f"NetCDF file size: {file_size} bytes")
+        
+#         if file_size == 0:
+#             raise ValueError("NetCDF file appears to be empty on GCS")
+        
+#         # Create a temporary file with a more explicit approach
+#         temp_fd, temp_path = tempfile.mkstemp(suffix='.nc', prefix='netcdf_')
+        
+#         try:
+#             # Close the file descriptor since we'll write to it differently
+#             os.close(temp_fd)
             
-            # Open the NetCDF file using the local temporary file
-            dataset = xr.open_dataset(temp_file.name, engine="h5netcdf")
+#             # Download with explicit binary mode and buffering
+#             logger.info(f"Downloading NetCDF file to temporary location: {temp_path}")
+            
+#             with fs.open(filename, 'rb') as gcs_file:
+#                 with open(temp_path, 'wb') as local_file:
+#                     # Copy in chunks to handle large files
+#                     shutil.copyfileobj(gcs_file, local_file, length=16*1024*1024)  # 16MB chunks
+            
+#             # Verify the downloaded file
+#             downloaded_size = os.path.getsize(temp_path)
+#             logger.info(f"Downloaded file size: {downloaded_size} bytes")
+            
+#             if downloaded_size != file_size:
+#                 raise ValueError(f"File size mismatch: expected {file_size}, got {downloaded_size}")
+            
+#             if downloaded_size == 0:
+#                 raise ValueError("Downloaded NetCDF file is empty")
+            
+#             # Try to open with different engines as fallback
+#             dataset = None
+#             engines_to_try = ['h5netcdf', 'netcdf4']
+            
+#             for engine in engines_to_try:
+#                 try:
+#                     logger.info(f"Attempting to open NetCDF with engine: {engine}")
+#                     dataset = xr.open_dataset(temp_path, engine=engine)
+#                     logger.info(f"Successfully opened NetCDF with engine: {engine}")
+#                     break
+#                 except Exception as e:
+#                     logger.warning(f"Failed to open with engine {engine}: {e}")
+#                     if dataset is not None:
+#                         dataset.close()
+#                     dataset = None
+#                     continue
+            
+#             if dataset is None:
+#                 raise ValueError("Unable to open NetCDF file with any available engine")
+            
+#             # Verify required variables exist
+#             required_vars = ['flux', 'uncertainty', 'time', 'lat', 'lon', 'lat_grid', 'lon_grid']
+#             missing_vars = [var for var in required_vars if var not in dataset.variables]
+            
+#             if missing_vars:
+#                 dataset.close()
+#                 raise ValueError(f"NetCDF file missing required variables: {missing_vars}")
+            
+#             logger.info(f"NetCDF contains variables: {list(dataset.variables.keys())}")
+#             logger.info(f"NetCDF dimensions: {dict(dataset.dims)}")
 
-            # Read variables
-            # Transpose and convert to float32 where applicable
-            flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-            uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-            time = dataset['time'].values  # POSIX time remains unchanged
-            lat = dataset['lat'].values.astype(np.float32)
-            lon = dataset['lon'].values.astype(np.float32)
-            lat_grid = dataset['lat_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
-            lon_grid = dataset['lon_grid'].values.T.astype(np.float32)  # Combined transpose and float32 conversion
-
-            # Close the dataset
-            dataset.close()
-            
-            return {
-                'flux': flux,
-                'uncertainty': uncertainty,
-                'time': time,
-                'latitude': lat,
-                'longitude': lon,
-                'lat_grid': lat_grid,
-                'lon_grid': lon_grid,
-            }
-            
-        finally:
-            # Clean up the temporary file
-            try:
-                os.unlink(temp_file.name)
-            except OSError:
-                pass  # File might already be deleted
+#             # Read variables with error handling
+#             try:
+#                 flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+#                 uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
+#                 time = dataset['time'].values
+#                 lat = dataset['lat'].values.astype(np.float32)
+#                 lon = dataset['lon'].values.astype(np.float32)
+#                 lat_grid = dataset['lat_grid'].values.T.astype(np.float32)
+#                 lon_grid = dataset['lon_grid'].values.T.astype(np.float32)
+                
+#                 logger.info(f"Successfully loaded NetCDF data - flux shape: {flux.shape}")
+                
+#                 # Close the dataset
+#                 dataset.close()
+                
+#                 return {
+#                     'flux': flux,
+#                     'uncertainty': uncertainty,
+#                     'time': time,
+#                     'latitude': lat,
+#                     'longitude': lon,
+#                     'lat_grid': lat_grid,
+#                     'lon_grid': lon_grid,
+#                 }
+                
+#             except Exception as e:
+#                 dataset.close()
+#                 raise ValueError(f"Error reading NetCDF variables: {e}")
+                
+#         finally:
+#             # Clean up the temporary file
+#             try:
+#                 if os.path.exists(temp_path):
+#                     os.unlink(temp_path)
+#                     logger.info("Cleaned up temporary NetCDF file")
+#             except OSError as e:
+#                 logger.warning(f"Could not clean up temporary file {temp_path}: {e}")
+                
+#     except Exception as e:
+#         logger.error(f"Error loading NetCDF data: {str(e)}")
+#         raise
     
 def get_current_data_slice(data, time_range, temporal_agg):
     """Helper function to get the current data slice based on time range and aggregation"""
@@ -417,10 +1185,14 @@ def get_layout():
                     ], width=10),
                     dbc.Col([
                         html.Div([
-                            dbc.Button([
-                                "Documentation ",
-                                html.I(className="fas fa-file-pdf")
-                            ], color="secondary", className="me-2", id="hindcast-doc-button"),
+                            html.A(
+                                dbc.Button([
+                                    "Documentation ",
+                                    html.I(className="fas fa-file-pdf")
+                                ], color="secondary", className="me-2"),
+                                href="/assets/flux_hindcast.pdf",
+                                target="_blank"  # This opens the PDF in a new browser tab
+                            ),
                             dbc.Button([
                                 "Help ",
                                 html.I(className="fas fa-question-circle")
@@ -963,16 +1735,15 @@ def register_callbacks(app):
 )
     
     
-    def update_dashboard(display_type, spatial_agg, temporal_agg, time_range,
-                click_data, animation_status, scale_type, scale_min, scale_max,
-                transparency,
-                relayout_data, map_state):
+    def update_dashboard(display_type, spatial_agg, temporal_agg, time_range, 
+                    click_data, animation_status, scale_type, scale_min, scale_max,
+                    transparency, relayout_data, map_state):
         """Update both map and time series based on user interactions"""
-    
+        
         # Initialize figures
         map_fig = go.Figure()
         timeseries_fig = go.Figure()
-    
+        
         colorbar_settings = dict(
             orientation='v',
             thickness=20,
@@ -987,21 +1758,22 @@ def register_callbacks(app):
             ),
             tickfont=dict(size=10)
         )
-    
+        
         try:
-            # Get data based on display type and spatial aggregation
+            # Get data based on display type and spatial aggregation                       
+            
             if spatial_agg == 'native':
                 # Use raw netCDF data for native resolution
                 data = FLUX_DATA if display_type == 'flux' else UNCERTAINTY_DATA
-    
+                
                 # For map: Always compute mean over slider range
                 current_data = data[:, :, time_range[0]:time_range[1]+1].mean(axis=2)
-    
+                
                 # Create grid cells for native resolution
                 features = []
                 values = []
                 customdata = []  # For additional hover data
-    
+                
                 for i in range(len(LAT_GRID)-1):
                     for j in range(len(LON_GRID[0])-1):
                         polygon = [[
@@ -1011,7 +1783,7 @@ def register_callbacks(app):
                             [LON_GRID[i+1,j], LAT_GRID[i+1,j]],
                             [LON_GRID[i,j], LAT_GRID[i,j]]
                         ]]
-    
+                        
                         grid_id = f"{i}_{j}"
                         value = current_data[i,j]
                         features.append({
@@ -1024,12 +1796,12 @@ def register_callbacks(app):
                         })
                         values.append(value)
                         customdata.append([LAT_GRID[i,j], LON_GRID[i,j]])  # Store lat/lon for hover
-    
+                
                 geojson = {
                     "type": "FeatureCollection",
                     "features": features
                 }
-    
+                
                 # Create base choroplethmapbox arguments
                 choroplethmapbox_args = {
                     'geojson': geojson,
@@ -1048,31 +1820,26 @@ def register_callbacks(app):
                         "<extra></extra>"
                     )
                 }
-    
+                
                 # Add fixed scale if specified
                 if scale_type == 'fixed' and scale_min is not None and scale_max is not None:
                     choroplethmapbox_args.update({
                         'zmin': float(scale_min),
                         'zmax': float(scale_max)
                     })
-    
-                map_fig.add_trace(go.Choroplethmapbox(**choroplethmapbox_args))
-    
+                
+                map_fig.add_trace(go.Choroplethmapbox(**choroplethmapbox_args))            
+            
             else:
-                # Get pre-computed spatial data from HDF5
-                spatial_data = {
-                'zip': ZIP_DATA,
-                'census': CENSUS_DATA,
-                'custom': CUSTOM_DATA
-                }.get(spatial_agg)
-    
-                if not spatial_data:
+                # Get pre-computed spatial data from NetCDF
+                est_flux, unc_flux = get_spatial_data(spatial_agg)
+                
+                if est_flux is None or unc_flux is None:
                     raise ValueError(f"No data available for {spatial_agg} aggregation")
-    
-                # Get appropriate data based on display type
-                key = f"{spatial_agg}_{'est_flux' if display_type == 'flux' else 'unc_flux'}"
-                df = spatial_data[key]
-    
+                
+                # Choose appropriate DataFrame based on display type
+                df = est_flux if display_type == 'flux' else unc_flux
+                
                 # Get boundaries for the chosen aggregation from GCS
                 GCS_SHAPEFILE_FOLDER_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/"
                 boundaries_key = {
@@ -1088,7 +1855,7 @@ def register_callbacks(app):
                 }
                 shapefile_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_names[boundaries_key]}"
                 boundaries = gpd.read_file(shapefile_path)
-    
+                
                 # Add the feature ID mapping
                 feature_id_mapping = {
                     'zip': 'ZIP_CODE',
@@ -1096,11 +1863,11 @@ def register_callbacks(app):
                     'custom': 'Zones'
                 }
                 feature_id_key = f"properties.{feature_id_mapping[spatial_agg]}"
-    
+                
                 # For map: Always compute mean over slider range
                 selected_dates = pd.to_datetime(DATES[time_range[0]:time_range[1]+1], unit='s')
                 current_data = df[selected_dates].mean(axis=1)
-    
+                
                 # Create base choroplethmapbox arguments
                 choroplethmapbox_args = {
                     'geojson': boundaries.__geo_interface__,
@@ -1117,23 +1884,23 @@ def register_callbacks(app):
                         "<extra></extra>"
                     )
                 }
-    
+                
                 # Add fixed scale if specified
                 if scale_type == 'fixed' and scale_min is not None and scale_max is not None:
                     choroplethmapbox_args.update({
                         'zmin': float(scale_min),
                         'zmax': float(scale_max)
                     })
-    
+                    
                 map_fig.add_trace(go.Choroplethmapbox(**choroplethmapbox_args))
     
             # Calculate bounds for optimal view
             lat_bounds = [np.min(LAT_GRID), np.max(LAT_GRID)]
             lon_bounds = [np.min(LON_GRID), np.max(LON_GRID)]
-    
+            
             center_lat = (lat_bounds[0] + lat_bounds[1]) / 2
             center_lon = (lon_bounds[0] + lon_bounds[1]) / 2
-    
+            
             # Calculate zoom level to fit the data extent
             lon_range = lon_bounds[1] - lon_bounds[0]
             lat_range = lat_bounds[1] - lat_bounds[0]
@@ -1142,7 +1909,7 @@ def register_callbacks(app):
                 math.log2(180 / lat_range) - 1
             )
             zoom = max(min(zoom, 10), 7)  # Constrain zoom between 7 and 10
-    
+            
             # Base layout settings for map
             map_layout = dict(
                 autosize=True,
@@ -1156,7 +1923,7 @@ def register_callbacks(app):
                 paper_bgcolor='white',
                 plot_bgcolor='white'
             )
-    
+            
             # Base layout for time series
             timeseries_layout = dict(
                 autosize=True,
@@ -1191,11 +1958,11 @@ def register_callbacks(app):
                     borderwidth=1
                 )
             )
-    
+            
             # Apply layouts
             map_fig.update_layout(map_layout)
             timeseries_fig.update_layout(timeseries_layout)
-    
+            
             # Handle time series display
             if not click_data:
                 if spatial_agg == 'native':
@@ -1203,15 +1970,15 @@ def register_callbacks(app):
                     data = FLUX_DATA if display_type == 'flux' else UNCERTAINTY_DATA
                     domain_means = np.nanmean(np.nanmean(data, axis=0), axis=0)
                     dates = pd.to_datetime(DATES, unit='s')
-                    df = pd.DataFrame({'date': dates, 'value': domain_means})
-    
+                    df_ts = pd.DataFrame({'date': dates, 'value': domain_means})
+                    
                     # Apply monthly aggregation only if selected
                     if temporal_agg != 'single':
-                        df = df.set_index('date').resample('ME').mean().reset_index()
-    
+                        df_ts = df_ts.set_index('date').resample('M').mean().reset_index()
+                    
                     timeseries_fig.add_trace(go.Scatter(
-                        x=df['date'],
-                        y=df['value'],
+                        x=df_ts['date'],
+                        y=df_ts['value'],
                         mode='lines+markers',
                         name='Domain Average',
                         line=dict(color='rgba(0,0,255,0.7)')
@@ -1219,78 +1986,117 @@ def register_callbacks(app):
                     timeseries_fig.update_layout(title="Domain-wide Average Time Series")
                 else:
                     # Show average across all regions for aggregated data
-                    key = f"{spatial_agg}_{'est_flux' if display_type == 'flux' else 'unc_flux'}"
-                    df = spatial_data[key]
-                    dates = pd.to_datetime(df.columns)
-                    region_mean = df.mean()
-    
-                    # Create DataFrame for time series
-                    temp_df = pd.DataFrame({'date': dates, 'value': region_mean})
-    
-                    # Apply monthly aggregation only if selected
-                    if temporal_agg != 'single':
-                        temp_df = temp_df.set_index('date').resample('ME').mean().reset_index()
-    
-                    timeseries_fig.add_trace(go.Scatter(
-                        x=temp_df['date'],
-                        y=temp_df['value'],
-                        mode='lines+markers',
-                        name='Regional Average',
-                        line=dict(color='rgba(0,0,255,0.7)')
-                    ))
-                    timeseries_fig.update_layout(title="Regional Average Time Series")
+                    est_flux, unc_flux = get_spatial_data(spatial_agg)
+                    if est_flux is not None and unc_flux is not None:
+                        df = est_flux if display_type == 'flux' else unc_flux
+                        dates = df.columns
+                        region_mean = df.mean()
+                        
+                        # Create DataFrame for time series
+                        temp_df = pd.DataFrame({'date': dates, 'value': region_mean})
+                        
+                        # Apply monthly aggregation only if selected
+                        if temporal_agg != 'single':
+                            temp_df = temp_df.set_index('date').resample('M').mean().reset_index()
+                        
+                        timeseries_fig.add_trace(go.Scatter(
+                            x=temp_df['date'],
+                            y=temp_df['value'],
+                            mode='lines+markers',
+                            name='Regional Average',
+                            line=dict(color='rgba(0,0,255,0.7)')
+                        ))
+                        timeseries_fig.update_layout(title="Regional Average Time Series")
             else:
+                # Handle clicked data with proper type checking
                 if spatial_agg == 'native':
                     # Handle click for native resolution
                     data = FLUX_DATA if display_type == 'flux' else UNCERTAINTY_DATA
                     location_id = click_data['points'][0]['location']
-                    i, j = map(int, location_id.split('_'))
-    
+                    
+                    # Ensure location_id is a string and can be split
+                    if not isinstance(location_id, str):
+                        location_id = str(location_id)
+                    
+                    # Check if location_id contains underscore for splitting
+                    if '_' in location_id:
+                        try:
+                            i, j = map(int, location_id.split('_'))
+                        except (ValueError, IndexError):
+                            logger.warning(f"Could not parse location_id: {location_id}")
+                            return map_fig, timeseries_fig, map_state
+                    else:
+                        logger.warning(f"Invalid location_id format for native resolution: {location_id}")
+                        return map_fig, timeseries_fig, map_state
+                    
                     # Get full time series for clicked location
                     time_series = data[i, j, :]
                     dates = pd.to_datetime(DATES, unit='s')
-                    df = pd.DataFrame({'date': dates, 'value': time_series})
-    
+                    df_ts = pd.DataFrame({'date': dates, 'value': time_series})
+                    
                     # Apply monthly aggregation only if selected
                     if temporal_agg != 'single':
-                        df = df.set_index('date').resample('ME').mean().reset_index()
-    
+                        df_ts = df_ts.set_index('date').resample('M').mean().reset_index()
+                    
                     title = f"{display_type.capitalize()} Time Series for Latitude {LAT_GRID[i,j]:.2f}°N, Longitude {LON_GRID[i,j]:.2f}°W"
                 else:
                     # Handle click for aggregated data
-                    key = f"{spatial_agg}_{'est_flux' if display_type == 'flux' else 'unc_flux'}"
-                    df_agg = spatial_data[key]
-                    location_id = click_data['points'][0]['location']
-                    if spatial_agg == 'custom':
-                        location_id = int(location_id)
-    
-                    # Get full time series for clicked location
-                    time_series = df_agg.loc[location_id]
-                    dates = pd.to_datetime(df_agg.columns)
-                    df_temp = pd.DataFrame({'date': dates, 'value': time_series.values})
-    
-                    # Apply monthly aggregation only if selected
-                    if temporal_agg != 'single':
-                        df_temp = df_temp.set_index('date').resample('ME').mean().reset_index()
-    
-                    df = df_temp  # Reassign for consistent plotting
-                    # Create title based on aggregation type and display type
-                    if spatial_agg == 'zip':
-                        title = f"{display_type.capitalize()} Time Series for Zipcode {location_id}"
-                    elif spatial_agg == 'census':
-                        title = f"{display_type.capitalize()} Time Series for Census Tract {location_id}"
-                    else:  # custom regions
-                        title = f"{display_type.capitalize()} Time Series for Region {location_id}"
-    
+                    est_flux, unc_flux = get_spatial_data(spatial_agg)
+                    if est_flux is not None and unc_flux is not None:
+                        df = est_flux if display_type == 'flux' else unc_flux
+                        location_id = click_data['points'][0]['location']
+                        
+                        # Handle different data types for location_id
+                        try:
+                            # For custom regions, ensure location_id is an integer
+                            if spatial_agg == 'custom':
+                                if isinstance(location_id, str):
+                                    location_id = int(location_id)
+                                # location_id should already be int for custom regions
+                            else:
+                                # For zip and census, ensure location_id is a string
+                                if not isinstance(location_id, str):
+                                    location_id = str(location_id)
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Could not convert location_id {location_id} for {spatial_agg}: {e}")
+                            return map_fig, timeseries_fig, map_state
+                        
+                        # Check if location_id exists in the DataFrame
+                        if location_id not in df.index:
+                            logger.warning(f"Location {location_id} not found in {spatial_agg} data")
+                            return map_fig, timeseries_fig, map_state
+                        
+                        # Get full time series for clicked location
+                        time_series = df.loc[location_id]
+                        dates = df.columns
+                        df_temp = pd.DataFrame({'date': dates, 'value': time_series.values})
+                        
+                        # Apply monthly aggregation only if selected
+                        if temporal_agg != 'single':
+                            df_temp = df_temp.set_index('date').resample('M').mean().reset_index()
+                        
+                        df_ts = df_temp  # Reassign for consistent plotting
+                        
+                        # Create title based on aggregation type and display type
+                        if spatial_agg == 'zip':
+                            title = f"{display_type.capitalize()} Time Series for ZIP Code {location_id}"
+                        elif spatial_agg == 'census':
+                            title = f"{display_type.capitalize()} Time Series for Census Tract {location_id}"
+                        else:  # custom regions
+                            title = f"{display_type.capitalize()} Time Series for Region {location_id}"
+                    else:
+                        logger.warning(f"No flux data available for {spatial_agg}")
+                        return map_fig, timeseries_fig, map_state
+                
                 timeseries_fig.add_trace(go.Scatter(
-                    x=df['date'],
-                    y=df['value'],
+                    x=df_ts['date'],
+                    y=df_ts['value'],
                     mode='lines+markers',
                     name='Selected Region',
                     line=dict(color='rgba(255,0,0,0.7)')
                 ))
                 timeseries_fig.update_layout(title=title)
-    
+            
             # Update map view state if necessary
             if relayout_data and 'mapbox.center' in relayout_data:
                 map_layout['mapbox'].update(
@@ -1299,15 +2105,14 @@ def register_callbacks(app):
                 )
             elif map_state:
                 map_layout['mapbox'].update(map_state)
-    
+            
             # Final layout updates
             map_fig.update_layout(map_layout)
-    
+            
             return map_fig, timeseries_fig, map_layout['mapbox']
     
         except Exception as e:
-            print(f"Error in dashboard update: {e}")
-            # Return empty figures and no map state update on error
+            logger.error(f"Error in dashboard update: {e}")
             return go.Figure(), go.Figure(), dash.no_update
     
     
@@ -1552,7 +2357,7 @@ def register_callbacks(app):
                     
     #                 # Apply monthly aggregation only if selected
     #                 if temporal_agg != 'single':
-    #                     df = df.set_index('date').resample('ME').mean().reset_index()
+    #                     df = df.set_index('date').resample('M').mean().reset_index()
                     
     #                 timeseries_fig.add_trace(go.Scatter(
     #                     x=df['date'],
@@ -1572,7 +2377,7 @@ def register_callbacks(app):
                     
     #                 # Apply monthly aggregation only if selected
     #                 if temporal_agg != 'single':
-    #                     temp_df = temp_df.set_index('date').resample('ME').mean().reset_index()
+    #                     temp_df = temp_df.set_index('date').resample('M').mean().reset_index()
                     
     #                 timeseries_fig.add_trace(go.Scatter(
     #                     x=temp_df['date'],
@@ -1595,7 +2400,7 @@ def register_callbacks(app):
                     
     #                 # Apply monthly aggregation only if selected
     #                 if temporal_agg != 'single':
-    #                     df = df.set_index('date').resample('ME').mean().reset_index()
+    #                     df = df.set_index('date').resample('M').mean().reset_index()
                     
     #                 title = f"{display_type.capitalize()} Time Series for Latitude {LAT_GRID[i,j]:.2f}°N, Longitude {LON_GRID[i,j]:.2f}°W"
     #             else:
@@ -1611,7 +2416,7 @@ def register_callbacks(app):
                     
     #                 # Apply monthly aggregation only if selected
     #                 if temporal_agg != 'single':
-    #                     df_temp = df_temp.set_index('date').resample('ME').mean().reset_index()
+    #                     df_temp = df_temp.set_index('date').resample('M').mean().reset_index()
                     
     #                 df = df_temp  # Reassign for consistent plotting
     #                 # Create title based on aggregation type and display type
