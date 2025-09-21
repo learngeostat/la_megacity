@@ -24,3 +24,7 @@ steps:
 
 # This option increases the default build timeout to prevent timing out on complex builds.
 timeout: '1200s'
+
+# Add this entire section to your file
+options:
+  logging: CLOUD_LOGGING_ONLY
