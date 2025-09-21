@@ -1,11 +1,23 @@
 steps:
+# 1. Build the Docker image
 - name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest', '.']
+
+# 2. Push the built image to Artifact Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest']
+
+# 3. Deploy the image to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
   args:
-  - 'build'
-  - '-t'
-  - 'us-west2-docker.pkg.dev/primeval-gear-472313-v7/la-megacity/la-megacity-dashboard:latest'
-  - '.'
-images:
-- 'us-west2-docker.pkg.dev/primeval-gear-472313-v7/la-megacity/la-megacity-dashboard:latest'
+    - 'run'
+    - 'deploy'
+    - 'la-megacity-dashboard' # This will be the name of your service
+    - '--image=us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest'
+    - '--region=us-west2' # The region near Los Angeles
+    - '--platform=managed'
+    - '--allow-unauthenticated'
+
 options:
   logging: CLOUD_LOGGING_ONLY
