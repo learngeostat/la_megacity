@@ -90,12 +90,48 @@ def update_time_series_section(time_series_section):
 def load_geodata():
     """Load geographical data with proper error handling"""
     try:
-        census_tracts = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'census_tract_clipped.gpkg'))
-        zip_codes = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'zip_code_socab.gpkg'))
-        socab_boundary = gpd.read_file(os.path.join(SHAPEFILE_PATH, 'socabbound.gpkg'))
-        return census_tracts, zip_codes, socab_boundary
-    except Exception:
-        return None, None
+        import tempfile
+        import gcsfs
+        import os
+        
+        fs = gcsfs.GCSFileSystem()
+        
+        # Initialize variables
+        census_tracts = None
+        zip_codes = None  
+        socab_boundary = None
+        
+        # Download and read each GeoPackage file
+        geopackage_files = [
+            ('census_tract_clipped.gpkg', 'census_tracts'),
+            ('zip_code_socab.gpkg', 'zip_codes'),
+            ('socabbound.gpkg', 'socab_boundary')
+        ]
+        
+        results = {}
+        
+        for filename, var_name in geopackage_files:
+            with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file:
+                try:
+                    # Download from GCS to local temp file
+                    gcs_path = f"la-megacity-dashboard-data-1/data/shapefiles/{filename}"
+                    fs.get(gcs_path, temp_file.name)
+                    
+                    # Read from local file
+                    results[var_name] = gpd.read_file(temp_file.name)
+                    
+                finally:
+                    # Clean up temp file
+                    try:
+                        os.unlink(temp_file.name)
+                    except:
+                        pass
+        
+        return results.get('census_tracts'), results.get('zip_codes'), results.get('socab_boundary')
+        
+    except Exception as e:
+        print(f"Error loading geodata: {e}")
+        return None, None, None
     
 def get_years_and_dates(dates):
     """Get unique years and organize dates"""    

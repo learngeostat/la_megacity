@@ -405,35 +405,57 @@ def init():
     global raw_data_dict_afternoon, background_data_dict_afternoon
     global raw_data_dict_all, background_data_dict_all
     global available_sites
-    global GEO_DF, GEO_DF2  # Add the new globals here
+    global GEO_DF, GEO_DF2
 
     try:
         logging.info("--- Initializing Surface Observations Page ---")
 
-        # Load shapefiles for the map
+        # Load shapefiles for the map using local download approach
         try:
             logging.info("Loading shapefiles from GCS...")
+            import tempfile
+            import gcsfs
+            import os
+            
+            fs = gcsfs.GCSFileSystem()
+            
+            # Load first shapefile (socabbound)
             shapefile_path1 = prm.SHAPEFILES['socabbound']
+            with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file1:
+                # Extract the bucket path from the full GS path
+                bucket_path1 = shapefile_path1.replace('gs://', '')
+                fs.get(bucket_path1, temp_file1.name)
+                GEO_DF = gpd.read_file(temp_file1.name)
+                os.unlink(temp_file1.name)
+            
+            # Load second shapefile (paper_towers)
             shapefile_path2 = prm.SHAPEFILES['paper_towers']
-            GEO_DF = gpd.read_file(shapefile_path1)
-            GEO_DF2 = gpd.read_file(shapefile_path2)
+            with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file2:
+                # Extract the bucket path from the full GS path
+                bucket_path2 = shapefile_path2.replace('gs://', '')
+                fs.get(bucket_path2, temp_file2.name)
+                GEO_DF2 = gpd.read_file(temp_file2.name)
+                os.unlink(temp_file2.name)
+                
             logging.info("Successfully loaded shapefiles.")
+            
         except Exception as e:
             logging.error(f"Failed to load shapefiles: {e}")
             # Continue without map data if necessary, or handle as a critical error
             GEO_DF = None
             GEO_DF2 = None
 
+        # Rest of the function remains the same...
         # Load afternoon hours data using the NEW function
         hdf_filename_afternoon = prm.DATA_FILES['aggregated_data_afternoon']
         raw_data_dict_afternoon, background_data_dict_afternoon, _, _ = \
-            load_data_from_gcs_hdf(hdf_filename_afternoon) # <-- USE NEW FUNCTION
+            load_data_from_gcs_hdf(hdf_filename_afternoon)
         logging.info("Finished loading afternoon hours data.")
 
         # Load all hours data using the NEW function
         hdf_filename_all = prm.DATA_FILES['aggregated_data_allhours.h5']
         raw_data_dict_all, background_data_dict_all, _, _ = \
-            load_data_from_gcs_hdf(hdf_filename_all) # <-- USE NEW FUNCTION
+            load_data_from_gcs_hdf(hdf_filename_all)
         logging.info("Finished loading all hours data.")
         
         # Populate available sites for each gas type
