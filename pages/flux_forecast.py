@@ -1362,12 +1362,12 @@ def register_callbacks(app):
             return None
     
     @app.callback(
-        Output("emissions-download-shapefile-zip", "data"),
-        Input("emissions-trigger-download-shapefile-zip", "n_clicks"),
-        prevent_initial_call=True
-    )
+    Output("emissions-download-shapefile-zip", "data"),
+    Input("emissions-trigger-download-shapefile-zip", "n_clicks"),
+    prevent_initial_call=True
+)
     def download_shapefile_zip(n_clicks):
-        """Download complete shapefile as ZIP from GCS."""
+        """Download complete GeoPackage as ZIP from GCS."""
         if not n_clicks:
             return None
         
@@ -1375,36 +1375,25 @@ def register_callbacks(app):
             fs = gcsfs.GCSFileSystem()
     
             with tempfile.TemporaryDirectory() as temp_dir:
-                # 1. Define shapefile components and get the base GCS path from constants
-                shapefile_exts = ['.shp', '.shx', '.dbf', '.prj', '.cpg']
-                shapefile_key = 'census_tracts_emissions_dashboard'
-                # Reconstruct the base GCS path from the full .shp path in constants
-                #base_gcs_path = prm.SHAPEFILES[shapefile_key].replace('.shp', '')
-                base_gcs_path = GCS_SHAPEFILE_BASE
-    
-                # 2. Download all shapefile components from GCS to the temporary directory
-                for ext in shapefile_exts:
-                    gcs_path = base_gcs_path + ext
-                    local_path = os.path.join(temp_dir, f"{shapefile_key}{ext}")
-                    if fs.exists(gcs_path):
-                        fs.get(gcs_path, local_path)
+                # Download the GeoPackage file instead of shapefile components
+                gcs_gpkg_path = GCS_SHAPEFILE_PATH  # This is already the .gpkg path
+                local_gpkg_path = os.path.join(temp_dir, 'census_tracts_emissions_dashboard.gpkg')
                 
-                # 3. Zip the downloaded files
+                if fs.exists(gcs_gpkg_path):
+                    fs.get(gcs_gpkg_path, local_gpkg_path)
+                
+                # Zip the GeoPackage file
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for root, _, files in os.walk(temp_dir):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            # Use a simpler name in the zip archive
-                            arc_name = file.replace(shapefile_key, 'emissions_data')
-                            zip_file.write(file_path, arc_name)
+                    if os.path.exists(local_gpkg_path):
+                        zip_file.write(local_gpkg_path, 'emissions_data.gpkg')
     
                 zip_buffer.seek(0)
                 
-                return dcc.send_bytes(zip_buffer.getvalue(), 'emissions_shapefile.zip')
+                return dcc.send_bytes(zip_buffer.getvalue(), 'emissions_geopackage.zip')
         
         except Exception as e:
-            print(f"Error in shapefile download: {e}")
+            print(f"Error in GeoPackage download: {e}")
             return None
         
         
