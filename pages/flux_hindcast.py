@@ -22,7 +22,6 @@ import plotly.graph_objs as go
 import os
 import geopandas as gpd
 import xarray as xr
-from utils import constants as prm
 from utils import conc_func as cfunc 
 import math
 import tempfile
@@ -36,6 +35,8 @@ import logging
 #logging.getLogger("fiona").disabled = True
 
 logger = logging.getLogger(__name__)
+
+
 
 # Hardcoded GCS bucket paths
 # Hardcoded GCS bucket paths
@@ -64,6 +65,60 @@ feature_id_mapping = {
     'census': 'TRACTCE',
     'custom': 'Zones'
 }
+
+
+def load_geopackage_from_gcs(gcs_path):
+    """
+    Load GeoPackage data from GCS using temporary local storage.
+    
+    Args:
+        gcs_path (str): GCS path to the .gpkg file
+        
+    Returns:
+        gpd.GeoDataFrame: Loaded geodataframe or None if failed
+    """
+    import gcsfs
+    
+    logger.info(f"Loading GeoPackage from {gcs_path}")
+    fs = gcsfs.GCSFileSystem()
+    
+    try:
+        # Check if file exists
+        if not fs.exists(gcs_path):
+            logger.error(f"GeoPackage file does not exist: {gcs_path}")
+            return None
+            
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file:
+            try:
+                # Download the file from GCS
+                logger.info(f"Downloading GeoPackage to temporary location: {temp_file.name}")
+                fs.get(gcs_path, temp_file.name)
+                
+                # Verify download
+                downloaded_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded GeoPackage size: {downloaded_size} bytes")
+                
+                if downloaded_size == 0:
+                    raise ValueError("Downloaded GeoPackage file is empty")
+                
+                # Load with GeoPandas
+                gdf = gpd.read_file(temp_file.name)
+                logger.info(f"Successfully loaded GeoPackage with {len(gdf)} features")
+                
+                return gdf
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary GeoPackage file")
+                except OSError as e:
+                    logger.warning(f"Could not clean up temporary file {temp_file.name}: {e}")
+                    
+    except Exception as e:
+        logger.error(f"Failed to load GeoPackage from {gcs_path}: {e}")
+        return None
 
 def debug_netcdf_file(filename):
     """
@@ -459,7 +514,7 @@ def init():
         logger.info("--- Flux hindcast initialization successful ---")
         return True
         
-    except Exception as e:
+    except Exception:
         logger.error("--- Critical error in flux hindcast initialization ---", exc_info=True)
         return False
     
@@ -471,7 +526,7 @@ def load_spatial_hdf_data_with_time_debug(gcs_path):
     import os
     import h5py
     import pandas as pd
-    import numpy as np
+
     
     logger.info(f"Loading spatial HDF5 data from {gcs_path} with time debugging")
     fs = gcsfs.GCSFileSystem()
@@ -562,7 +617,6 @@ def load_spatial_hdf_data(gcs_path):
     import os
     import pandas as pd
     import h5py
-    import numpy as np
     
     logger.info(f"Loading spatial HDF5 data with NetCDF time coordinates")
     fs = gcsfs.GCSFileSystem()
@@ -1008,136 +1062,6 @@ def get_spatial_data(agg_type):
         logger.error(f"Error getting {agg_type} data: {e}")
         return None, None
 
-
-# def load_netcdf_data(filename):
-#     """
-#     Load NetCDF data from GCS with robust error handling and file validation.
-
-#     Args:
-#         filename (str): GCS path to the NetCDF file.
-
-#     Returns:
-#         dict: Dictionary containing flux, uncertainty, and metadata.
-#     """
-#     import gcsfs
-#     import tempfile
-#     import os
-#     import shutil
-    
-#     # Initialize GCS filesystem
-#     fs = gcsfs.GCSFileSystem()
-    
-#     try:
-#         # Check if file exists first
-#         if not fs.exists(filename):
-#             raise FileNotFoundError(f"NetCDF file not found on GCS: {filename}")
-        
-#         # Get file info to verify it's accessible
-#         file_info = fs.info(filename)
-#         file_size = file_info.get('size', 0)
-#         logger.info(f"NetCDF file size: {file_size} bytes")
-        
-#         if file_size == 0:
-#             raise ValueError("NetCDF file appears to be empty on GCS")
-        
-#         # Create a temporary file with a more explicit approach
-#         temp_fd, temp_path = tempfile.mkstemp(suffix='.nc', prefix='netcdf_')
-        
-#         try:
-#             # Close the file descriptor since we'll write to it differently
-#             os.close(temp_fd)
-            
-#             # Download with explicit binary mode and buffering
-#             logger.info(f"Downloading NetCDF file to temporary location: {temp_path}")
-            
-#             with fs.open(filename, 'rb') as gcs_file:
-#                 with open(temp_path, 'wb') as local_file:
-#                     # Copy in chunks to handle large files
-#                     shutil.copyfileobj(gcs_file, local_file, length=16*1024*1024)  # 16MB chunks
-            
-#             # Verify the downloaded file
-#             downloaded_size = os.path.getsize(temp_path)
-#             logger.info(f"Downloaded file size: {downloaded_size} bytes")
-            
-#             if downloaded_size != file_size:
-#                 raise ValueError(f"File size mismatch: expected {file_size}, got {downloaded_size}")
-            
-#             if downloaded_size == 0:
-#                 raise ValueError("Downloaded NetCDF file is empty")
-            
-#             # Try to open with different engines as fallback
-#             dataset = None
-#             engines_to_try = ['h5netcdf', 'netcdf4']
-            
-#             for engine in engines_to_try:
-#                 try:
-#                     logger.info(f"Attempting to open NetCDF with engine: {engine}")
-#                     dataset = xr.open_dataset(temp_path, engine=engine)
-#                     logger.info(f"Successfully opened NetCDF with engine: {engine}")
-#                     break
-#                 except Exception as e:
-#                     logger.warning(f"Failed to open with engine {engine}: {e}")
-#                     if dataset is not None:
-#                         dataset.close()
-#                     dataset = None
-#                     continue
-            
-#             if dataset is None:
-#                 raise ValueError("Unable to open NetCDF file with any available engine")
-            
-#             # Verify required variables exist
-#             required_vars = ['flux', 'uncertainty', 'time', 'lat', 'lon', 'lat_grid', 'lon_grid']
-#             missing_vars = [var for var in required_vars if var not in dataset.variables]
-            
-#             if missing_vars:
-#                 dataset.close()
-#                 raise ValueError(f"NetCDF file missing required variables: {missing_vars}")
-            
-#             logger.info(f"NetCDF contains variables: {list(dataset.variables.keys())}")
-#             logger.info(f"NetCDF dimensions: {dict(dataset.dims)}")
-
-#             # Read variables with error handling
-#             try:
-#                 flux = dataset['flux'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-#                 uncertainty = dataset['uncertainty'].transpose('latitude', 'longitude', 'time').values.astype(np.float32)
-#                 time = dataset['time'].values
-#                 lat = dataset['lat'].values.astype(np.float32)
-#                 lon = dataset['lon'].values.astype(np.float32)
-#                 lat_grid = dataset['lat_grid'].values.T.astype(np.float32)
-#                 lon_grid = dataset['lon_grid'].values.T.astype(np.float32)
-                
-#                 logger.info(f"Successfully loaded NetCDF data - flux shape: {flux.shape}")
-                
-#                 # Close the dataset
-#                 dataset.close()
-                
-#                 return {
-#                     'flux': flux,
-#                     'uncertainty': uncertainty,
-#                     'time': time,
-#                     'latitude': lat,
-#                     'longitude': lon,
-#                     'lat_grid': lat_grid,
-#                     'lon_grid': lon_grid,
-#                 }
-                
-#             except Exception as e:
-#                 dataset.close()
-#                 raise ValueError(f"Error reading NetCDF variables: {e}")
-                
-#         finally:
-#             # Clean up the temporary file
-#             try:
-#                 if os.path.exists(temp_path):
-#                     os.unlink(temp_path)
-#                     logger.info("Cleaned up temporary NetCDF file")
-#             except OSError as e:
-#                 logger.warning(f"Could not clean up temporary file {temp_path}: {e}")
-                
-#     except Exception as e:
-#         logger.error(f"Error loading NetCDF data: {str(e)}")
-#         raise
-    
 def get_current_data_slice(data, time_range, temporal_agg):
     """Helper function to get the current data slice based on time range and aggregation"""
     if isinstance(time_range, list) and len(time_range) == 2:
@@ -1753,7 +1677,7 @@ def register_callbacks(app):
             x=1.02,
             xanchor='left',
             title=dict(
-                text='µmol m² sec⁻²' if display_type == 'flux' else 'Uncertainty',
+                text='µmol m⁻² sec⁻²' if display_type == 'flux' else 'Uncertainty',
                 side='right'
             ),
             tickfont=dict(size=10)
@@ -1840,21 +1764,21 @@ def register_callbacks(app):
                 # Choose appropriate DataFrame based on display type
                 df = est_flux if display_type == 'flux' else unc_flux
                 
-                # Get boundaries for the chosen aggregation from GCS
-                GCS_SHAPEFILE_FOLDER_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/"
-                boundaries_key = {
-                    'zip': 'zip_code_socab',
-                    'census': 'census_tract_clipped',
-                    'custom': 'zones_partitoned'
-                }[spatial_agg]
-                
-                shapefile_names = {
-                    'zip_code_socab': 'zip_code_socab.shp',
-                    'census_tract_clipped': 'census_tract_clipped.shp',
-                    'zones_partitoned': 'zones_partitoned.shp'
+                # Get boundaries for the chosen aggregation from GCS - UPDATED FOR GPKG
+                boundaries_file_mapping = {
+                    'zip': 'zip_code_socab.gpkg',
+                    'census': 'census_tract_clipped.gpkg', 
+                    'custom': 'zones_partitoned.gpkg'
                 }
-                shapefile_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_names[boundaries_key]}"
-                boundaries = gpd.read_file(shapefile_path)
+                
+                shapefile_filename = boundaries_file_mapping[spatial_agg]
+                shapefile_gcs_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_filename}"
+                
+                # Load GeoPackage from GCS using helper function
+                boundaries = load_geopackage_from_gcs(shapefile_gcs_path)
+                
+                if boundaries is None:
+                    raise ValueError(f"Could not load boundaries for {spatial_agg} aggregation")
                 
                 # Add the feature ID mapping
                 feature_id_mapping = {
@@ -1868,9 +1792,9 @@ def register_callbacks(app):
                 selected_dates = pd.to_datetime(DATES[time_range[0]:time_range[1]+1], unit='s')
                 current_data = df[selected_dates].mean(axis=1)
                 
-                # Create base choroplethmapbox arguments
+                # Create base choroplethmapbox arguments - UPDATED FOR GPKG
                 choroplethmapbox_args = {
-                    'geojson': boundaries.__geo_interface__,
+                    'geojson': boundaries.to_json(),  # Use to_json() instead of __geo_interface__
                     'featureidkey': feature_id_key,
                     'locations': current_data.index,
                     'z': current_data.values,
@@ -1928,7 +1852,7 @@ def register_callbacks(app):
             timeseries_layout = dict(
                 autosize=True,
                 xaxis_title="Date",
-                yaxis_title="Emissions (µmol m² sec⁻²)" if display_type == 'flux' else 'Uncertainty (µmol m² sec⁻²)',
+                yaxis_title="Emissions (µmol m⁻² sec⁻²)" if display_type == 'flux' else 'Uncertainty (µmol m⁻² sec⁻²)',
                 margin=dict(l=50, r=30, t=40, b=40),
                 paper_bgcolor='white',
                 plot_bgcolor='rgba(240, 242, 245, 0.8)',
@@ -2116,344 +2040,6 @@ def register_callbacks(app):
             return go.Figure(), go.Figure(), dash.no_update
     
     
-    
-    # def update_dashboard(display_type, spatial_agg, temporal_agg, time_range, 
-    #                 click_data, animation_status, scale_type, scale_min, scale_max,
-    #                 transparency,  # Add this parameter
-    #                 relayout_data, map_state):
-    #     """Update both map and time series based on user interactions"""
-        
-    #     # Initialize figures
-    #     map_fig = go.Figure()
-    #     timeseries_fig = go.Figure()
-        
-    #     colorbar_settings = dict(
-    #         orientation='v',
-    #         thickness=20,
-    #         len=0.9,
-    #         y=0.5,
-    #         yanchor='middle',
-    #         x=1.02,
-    #         xanchor='left',
-    #         title=dict(
-    #             text='µmol m² sec⁻²' if display_type == 'flux' else 'Uncertainty',
-    #             side='right'
-    #         ),
-    #         tickfont=dict(size=10)
-    #     )
-        
-    #     try:
-    #         # Get data based on display type and spatial aggregation                       
-            
-    #         if spatial_agg == 'native':
-    #             # Use raw netCDF data for native resolution
-    #             data = FLUX_DATA if display_type == 'flux' else UNCERTAINTY_DATA
-                
-    #             # For map: Always compute mean over slider range
-    #             current_data = data[:, :, time_range[0]:time_range[1]+1].mean(axis=2)
-                
-    #             # Create grid cells for native resolution
-    #             features = []
-    #             values = []
-    #             customdata = []  # For additional hover data
-                
-    #             for i in range(len(LAT_GRID)-1):
-    #                 for j in range(len(LON_GRID[0])-1):
-    #                     polygon = [[
-    #                         [LON_GRID[i,j], LAT_GRID[i,j]],
-    #                         [LON_GRID[i,j+1], LAT_GRID[i,j+1]],
-    #                         [LON_GRID[i+1,j+1], LAT_GRID[i+1,j+1]],
-    #                         [LON_GRID[i+1,j], LAT_GRID[i+1,j]],
-    #                         [LON_GRID[i,j], LAT_GRID[i,j]]
-    #                     ]]
-                        
-    #                     grid_id = f"{i}_{j}"
-    #                     value = current_data[i,j]
-    #                     features.append({
-    #                         "type": "Feature",
-    #                         "geometry": {
-    #                             "type": "Polygon",
-    #                             "coordinates": polygon
-    #                         },
-    #                         "id": grid_id
-    #                     })
-    #                     values.append(value)
-    #                     customdata.append([LAT_GRID[i,j], LON_GRID[i,j]])  # Store lat/lon for hover
-                
-    #             geojson = {
-    #                 "type": "FeatureCollection",
-    #                 "features": features
-    #             }
-                
-    #             # Create base choroplethmapbox arguments
-    #             choroplethmapbox_args = {
-    #                 'geojson': geojson,
-    #                 'locations': [f["id"] for f in features],
-    #                 'z': values,
-    #                 'colorscale': 'Turbo',
-    #                 'marker_opacity': transparency if transparency is not None else 0.7,
-    #                 'showscale': True,
-    #                 'colorbar': colorbar_settings,
-    #                 'customdata': customdata,
-    #                 'hovertemplate': (
-    #                     "Grid ID: %{location}<br>" +
-    #                     "Value: %{z:.4f}<br>" +
-    #                     "Lat: %{customdata[0]:.4f}<br>" +
-    #                     "Lon: %{customdata[1]:.4f}" +
-    #                     "<extra></extra>"
-    #                 )
-    #             }
-                
-    #             # Add fixed scale if specified
-    #             if scale_type == 'fixed' and scale_min is not None and scale_max is not None:
-    #                 choroplethmapbox_args.update({
-    #                     'zmin': float(scale_min),
-    #                     'zmax': float(scale_max)
-    #                 })
-                
-    #             map_fig.add_trace(go.Choroplethmapbox(**choroplethmapbox_args))            
-            
-    #         else:
-    #             # Get pre-computed spatial data from HDF5
-    #             spatial_data = {
-    #             'zip': ZIP_DATA,
-    #             'census': CENSUS_DATA,
-    #             'custom': CUSTOM_DATA
-    #             }.get(spatial_agg)
-                
-    #             if not spatial_data:
-    #                 raise ValueError(f"No data available for {spatial_agg} aggregation")
-                
-    #             # Get appropriate data based on display type
-    #             key = f"{spatial_agg}_{'est_flux' if display_type == 'flux' else 'unc_flux'}"
-    #             df = spatial_data[key]
-                
-    #             # Get boundaries for the chosen aggregation
-    #             boundaries_file = {
-    #                 'zip': 'zip_code_socab.shp',
-    #                 'census': 'census_tract_clipped.shp',
-    #                 'custom': 'zones_partitoned.shp'
-    #             }[spatial_agg]
-                
-    #             boundaries = gpd.read_file(os.path.join(prm.SHAPEFILE_PATH, boundaries_file))
-                
-    #             # Add the feature ID mapping
-    #             feature_id_mapping = {
-    #                 'zip': 'ZIP_CODE',
-    #                 'census': 'TRACTCE',
-    #                 'custom': 'Zones'
-    #             }
-    #             feature_id_key = f"properties.{feature_id_mapping[spatial_agg]}"
-                
-    #             # Get centroids for hover display
-    #             centroids = spatial_data.get(f'{spatial_agg}_centroids', {})
-                
-    #             # For map: Always compute mean over slider range
-    #             selected_dates = pd.to_datetime(DATES[time_range[0]:time_range[1]+1], unit='s')
-    #             current_data = df[selected_dates].mean(axis=1)
-                
-    #             # Create base choroplethmapbox arguments
-    #             choroplethmapbox_args = {
-    #                 'geojson': boundaries.__geo_interface__,
-    #                 'featureidkey': feature_id_key,
-    #                 'locations': current_data.index,
-    #                 'z': current_data.values,
-    #                 'colorscale': 'Turbo',
-    #                 'marker_opacity': transparency if transparency is not None else 0.7,
-    #                 'showscale': True,
-    #                 'colorbar': colorbar_settings,
-    #                 'hovertemplate': (
-    #                     f"{spatial_agg.title()} ID: %{{location}}<br>" +
-    #                     "Value: %{z:.4f}" +
-    #                     "<extra></extra>"
-    #                 )
-    #             }
-                
-    #             # Add fixed scale if specified
-    #             if scale_type == 'fixed' and scale_min is not None and scale_max is not None:
-    #                 choroplethmapbox_args.update({
-    #                     'zmin': float(scale_min),
-    #                     'zmax': float(scale_max)
-    #                 })
-                    
-    #             map_fig.add_trace(go.Choroplethmapbox(**choroplethmapbox_args))
-    
-    #         # Calculate bounds for optimal view
-    #         lat_bounds = [np.min(LAT_GRID), np.max(LAT_GRID)]
-    #         lon_bounds = [np.min(LON_GRID), np.max(LON_GRID)]
-            
-    #         center_lat = (lat_bounds[0] + lat_bounds[1]) / 2
-    #         center_lon = (lon_bounds[0] + lon_bounds[1]) / 2
-            
-    #         # Calculate zoom level to fit the data extent
-    #         lon_range = lon_bounds[1] - lon_bounds[0]
-    #         lat_range = lat_bounds[1] - lat_bounds[0]
-    #         zoom = min(
-    #             math.log2(360 / lon_range) - 1,
-    #             math.log2(180 / lat_range) - 1
-    #         )
-    #         zoom = max(min(zoom, 10), 7)  # Constrain zoom between 7 and 10
-            
-    #         # Base layout settings for map
-    #         map_layout = dict(
-    #             autosize=True,
-    #             mapbox=dict(
-    #                 style='open-street-map',
-    #                 zoom=zoom,
-    #                 center=dict(lat=center_lat, lon=center_lon),
-    #             ),
-    #             margin=dict(l=0, r=70, t=0, b=0),
-    #             uirevision='constant',
-    #             paper_bgcolor='white',
-    #             plot_bgcolor='white'
-    #         )
-            
-    #         # Base layout for time series
-    #         timeseries_layout = dict(
-    #             autosize=True,
-    #             xaxis_title="Date",
-    #             yaxis_title="Emissions (µmol m² sec⁻²)" if display_type == 'flux' else 'Uncertainty (µmol m² sec⁻²)',
-    #             margin=dict(l=50, r=30, t=40, b=40),
-    #             paper_bgcolor='white',
-    #             plot_bgcolor='rgba(240, 242, 245, 0.8)',
-    #             xaxis=dict(
-    #                 showgrid=True,
-    #                 gridcolor='rgba(128, 128, 128, 0.2)',
-    #                 gridwidth=1,
-    #                 showline=True,
-    #                 linecolor='rgba(128, 128, 128, 0.8)',
-    #                 type='date'
-    #             ),
-    #             yaxis=dict(
-    #                 showgrid=True,
-    #                 gridcolor='rgba(128, 128, 128, 0.2)',
-    #                 gridwidth=1,
-    #                 showline=True,
-    #                 linecolor='rgba(128, 128, 128, 0.8)'
-    #             ),
-    #             showlegend=True,
-    #             legend=dict(
-    #                 x=0.01,
-    #                 y=0.99,
-    #                 xanchor='left',
-    #                 yanchor='top',
-    #                 bgcolor='rgba(255, 255, 255, 0.8)',
-    #                 bordercolor='rgba(128, 128, 128, 0.2)',
-    #                 borderwidth=1
-    #             )
-    #         )
-            
-    #         # Apply layouts
-    #         map_fig.update_layout(map_layout)
-    #         timeseries_fig.update_layout(timeseries_layout)
-            
-    #         # Handle time series display
-    #         if not click_data:
-    #             if spatial_agg == 'native':
-    #                 # Show domain-wide average for native resolution
-    #                 domain_means = np.nanmean(np.nanmean(data, axis=0), axis=0)
-    #                 dates = pd.to_datetime(DATES, unit='s')
-    #                 df = pd.DataFrame({'date': dates, 'value': domain_means})
-                    
-    #                 # Apply monthly aggregation only if selected
-    #                 if temporal_agg != 'single':
-    #                     df = df.set_index('date').resample('M').mean().reset_index()
-                    
-    #                 timeseries_fig.add_trace(go.Scatter(
-    #                     x=df['date'],
-    #                     y=df['value'],
-    #                     mode='lines+markers',
-    #                     name='Domain Average',
-    #                     line=dict(color='rgba(0,0,255,0.7)')
-    #                 ))
-    #                 timeseries_fig.update_layout(title="Domain-wide Average Time Series")
-    #             else:
-    #                 # Show average across all regions for aggregated data
-    #                 dates = pd.to_datetime(df.columns)
-    #                 region_mean = df.mean()
-                    
-    #                 # Create DataFrame for time series
-    #                 temp_df = pd.DataFrame({'date': dates, 'value': region_mean})
-                    
-    #                 # Apply monthly aggregation only if selected
-    #                 if temporal_agg != 'single':
-    #                     temp_df = temp_df.set_index('date').resample('M').mean().reset_index()
-                    
-    #                 timeseries_fig.add_trace(go.Scatter(
-    #                     x=temp_df['date'],
-    #                     y=temp_df['value'],
-    #                     mode='lines+markers',
-    #                     name='Regional Average',
-    #                     line=dict(color='rgba(0,0,255,0.7)')
-    #                 ))
-    #                 timeseries_fig.update_layout(title="Regional Average Time Series")
-    #         else:
-    #             if spatial_agg == 'native':
-    #                 # Handle click for native resolution
-    #                 location_id = click_data['points'][0]['location']
-    #                 i, j = map(int, location_id.split('_'))
-                    
-    #                 # Get full time series for clicked location
-    #                 time_series = data[i, j, :]
-    #                 dates = pd.to_datetime(DATES, unit='s')
-    #                 df = pd.DataFrame({'date': dates, 'value': time_series})
-                    
-    #                 # Apply monthly aggregation only if selected
-    #                 if temporal_agg != 'single':
-    #                     df = df.set_index('date').resample('M').mean().reset_index()
-                    
-    #                 title = f"{display_type.capitalize()} Time Series for Latitude {LAT_GRID[i,j]:.2f}°N, Longitude {LON_GRID[i,j]:.2f}°W"
-    #             else:
-    #                 # Handle click for aggregated data
-    #                 location_id = click_data['points'][0]['location']
-    #                 if spatial_agg == 'custom':
-    #                     location_id = int(location_id)
-                    
-    #                 # Get full time series for clicked location
-    #                 time_series = df.loc[location_id]
-    #                 dates = pd.to_datetime(df.columns)
-    #                 df_temp = pd.DataFrame({'date': dates, 'value': time_series.values})
-                    
-    #                 # Apply monthly aggregation only if selected
-    #                 if temporal_agg != 'single':
-    #                     df_temp = df_temp.set_index('date').resample('M').mean().reset_index()
-                    
-    #                 df = df_temp  # Reassign for consistent plotting
-    #                 # Create title based on aggregation type and display type
-    #                 if spatial_agg == 'zip':
-    #                     title = f"{display_type.capitalize()} Time Series for Zipcode {location_id}"
-    #                 elif spatial_agg == 'census':
-    #                     title = f"{display_type.capitalize()} Time Series for Census Tract {location_id}"
-    #                 else:  # custom regions
-    #                     title = f"{display_type.capitalize()} Time Series for Region {location_id}"
-                
-    #             timeseries_fig.add_trace(go.Scatter(
-    #                 x=df['date'],
-    #                 y=df['value'],
-    #                 mode='lines+markers',
-    #                 name='Selected Region',
-    #                 line=dict(color='rgba(255,0,0,0.7)')
-    #             ))
-    #             timeseries_fig.update_layout(title=title)
-            
-    #         # Update map view state if necessary
-    #         if relayout_data and 'mapbox.center' in relayout_data:
-    #             map_layout['mapbox'].update(
-    #                 center=relayout_data['mapbox.center'],
-    #                 zoom=relayout_data['mapbox.zoom']
-    #             )
-    #         elif map_state:
-    #             map_layout['mapbox'].update(map_state)
-            
-    #         # Final layout updates
-    #         map_fig.update_layout(map_layout)
-            
-    #         return map_fig, timeseries_fig, map_layout['mapbox']
-    
-    #     except Exception as e:
-    #         print(f"Error in dashboard update: {e}")
-    #         return map_fig, timeseries_fig, None
-                
     # Date range display callback
     @app.callback(
     Output('hindcast-aggregation-period-text', 'children'),

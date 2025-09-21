@@ -3,6 +3,7 @@
 """
 Constants and configuration for the LA Megacity Dashboard.
 This version is updated for a cloud-native deployment using Google Cloud Storage (GCS).
+All shapefiles are stored as GeoPackage (.gpkg) format for better cloud compatibility.
 """
 
 # ############################################################################
@@ -36,24 +37,65 @@ CSV_PATH = f"{DATA_PATH}/csv"
 DATA_FILES = {
     # For surface_observations.py
     'aggregated_data_afternoon': f"{HDF_FILES_PATH}/aggregated_data_afternoon.h5",
-    'aggregated_data_allhours.h5': f"{HDF_FILES_PATH}/aggregated_data_allhours.h5",  # Fixed: added missing key
+    'aggregated_data_allhours': f"{HDF_FILES_PATH}/aggregated_data_allhours.h5",
 
     # For emissions.py (OCO-3)
     'oco3_obs': f"{CSV_PATH}/clipped_oco3_obs.csv",
     
     # For flux_hindcast.py
-    'fluxresults1': f"{HDF_FILES_PATH}/fluxresults1.nc",  # Fixed: moved to hdf_files
+    'fluxresults1': f"{HDF_FILES_PATH}/fluxresults1.nc",
     'spatial_data': f"{HDF_FILES_PATH}/spatial_data.h5",
 }
 
-# A centralized dictionary for all shapefiles. Geopandas reads the .shp file.
+# ############################################################################
+# Shapefile/GeoPackage Configuration
+# 
+# All spatial data files are stored as GeoPackage (.gpkg) format for better
+# cloud compatibility and single-file storage. GeoPackages are:
+# - Self-contained (no need for multiple .shp, .shx, .dbf files)
+# - Better cloud storage compatibility
+# - More robust for programmatic access
+# ############################################################################
+
 SHAPEFILES = {
     'socabbound': f"{SHAPEFILE_PATH}/socabbound.gpkg",
-    'paper_towers': f"{SHAPEFILE_PATH}/paper_towers.gpkg",
+    'paper_towers': f"{SHAPEFILE_PATH}/paper_towers.gpkg", 
     'census_tract_clipped': f"{SHAPEFILE_PATH}/census_tract_clipped.gpkg",
     'zip_code_socab': f"{SHAPEFILE_PATH}/zip_code_socab.gpkg",
     'zones_partitoned': f"{SHAPEFILE_PATH}/zones_partitoned.gpkg",
     'census_tracts_emissions_dashboard': f"{SHAPEFILE_PATH}/census_tracts_emissions_dashboard.gpkg"
+}
+
+# Helper function to get just the filename for a shapefile key
+def get_shapefile_filename(key):
+    """
+    Get just the filename (with extension) for a shapefile key.
+    
+    Args:
+        key (str): Key from SHAPEFILES dictionary
+        
+    Returns:
+        str: Filename with .gpkg extension
+        
+    Example:
+        get_shapefile_filename('zip_code_socab') returns 'zip_code_socab.gpkg'
+    """
+    if key not in SHAPEFILES:
+        raise ValueError(f"Unknown shapefile key: {key}")
+    return SHAPEFILES[key].split('/')[-1]
+
+# Mapping for spatial aggregation types to their corresponding shapefile keys
+SPATIAL_AGG_SHAPEFILES = {
+    'zip': 'zip_code_socab',
+    'census': 'census_tract_clipped', 
+    'custom': 'zones_partitoned'
+}
+
+# Feature ID field names for each spatial aggregation type
+FEATURE_ID_MAPPING = {
+    'zip': 'ZIP_CODE',
+    'census': 'TRACTCE',
+    'custom': 'Zones'
 }
 
 
@@ -126,14 +168,38 @@ gas_num_hours = {
 
 
 # ############################################################################
+# Cloud Storage Helper Functions
+# ############################################################################
+
+def load_geopackage_from_gcs(shapefile_key):
+    """
+    Helper function to get the full GCS path for a shapefile by key.
+    
+    Args:
+        shapefile_key (str): Key from SHAPEFILES dictionary
+        
+    Returns:
+        str: Full GCS path to the shapefile
+        
+    Example:
+        load_geopackage_from_gcs('zip_code_socab') returns 
+        'gs://la-megacity-dashboard-data-1/data/shapefiles/zip_code_socab.gpkg'
+    """
+    if shapefile_key not in SHAPEFILES:
+        raise ValueError(f"Unknown shapefile key: {shapefile_key}. Available keys: {list(SHAPEFILES.keys())}")
+    return SHAPEFILES[shapefile_key]
+
+
+# ############################################################################
 # NOTE on Data Loading
 #
-# The direct loading of shapefiles (e.g., geo_df = gpd.read_file(...)) has
+# The direct loading of spatial files (e.g., gdf = gpd.read_file(...)) has
 # been REMOVED from this configuration file.
 #
 # A constants file should only define constants, not perform actions
 # like reading data. This data should be loaded in the `init()` function
-# of the specific page that requires it (e.g., in `surface_observations.py`).
+# of the specific page that requires it using the helper functions provided
+# and appropriate temporary file handling for cloud storage access.
 # ############################################################################
 
 
