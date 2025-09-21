@@ -1,23 +1,26 @@
 steps:
-# 1. Build the Docker image
+# 1. Build the container image
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest', '.']
+  args: ['build', '-t', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:$COMMIT_SHA', '.']
 
-# 2. Push the built image to Artifact Registry
+# 2. Push the container image to Artifact Registry
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest']
+  args: ['push', 'us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:$COMMIT_SHA']
 
-# 3. Deploy the image to Cloud Run
+# 3. Deploy to Cloud Run
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:
     - 'run'
     - 'deploy'
-    - 'la-megacity-dashboard' # This will be the name of your service
-    - '--image=us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:latest'
-    - '--region=us-west2' # The region near Los Angeles
+    - 'la-megacity-dashboard'
+    - '--image=us-west2-docker.pkg.dev/$PROJECT_ID/la-megacity/la-megacity-dashboard:$COMMIT_SHA'
+    - '--region=us-west2'
     - '--platform=managed'
     - '--allow-unauthenticated'
+    # This line attaches the default compute service account to the Cloud Run service,
+    # which allows it to access other Google Cloud services like Cloud Storage.
+    - '--service-account=$(gcloud iam service-accounts list --filter="name:Compute Engine default service account" --format="value(email)")'
 
-options:
-  logging: CLOUD_LOGGING_ONLY
+# This option increases the default build timeout to prevent timing out on complex builds.
+timeout: '1200s'
