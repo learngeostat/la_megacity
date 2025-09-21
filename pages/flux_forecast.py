@@ -47,20 +47,39 @@ GCS_SHAPEFILE_BASE = "gs://la-megacity-dashboard-data-1/data/shapefiles/census_t
 def init():
     """Initialize emissions dashboard components"""
     global EMISSIONS_GDF
-
+    
     try:
-        logging.info("INIT FUNCTION: Attempting to load shapefile from GCS...")
-        EMISSIONS_GDF = gpd.read_file(GCS_SHAPEFILE_PATH)
+        logging.info("INIT FUNCTION: Downloading GeoPackage from GCS...")
+        
+        # Use gcsfs to download file to local temp location
+        import tempfile
+        import gcsfs
+        import os
+        
+        fs = gcsfs.GCSFileSystem()
+        
+        with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file:
+            # Download from GCS to local temp file
+            fs.get("la-megacity-dashboard-data-1/data/shapefiles/census_tracts_emissions_dashboard.gpkg", 
+                   temp_file.name)
+            
+            logging.info(f"INIT FUNCTION: Downloaded GeoPackage to {temp_file.name}")
+            
+            # Read from local file (avoids GDAL GCS virtual filesystem issues)
+            EMISSIONS_GDF = gpd.read_file(temp_file.name)
+            
+            # Clean up temp file
+            os.unlink(temp_file.name)
+            logging.info("INIT FUNCTION: Cleaned up temporary file")
 
         if EMISSIONS_GDF is None or EMISSIONS_GDF.empty:
-            logging.error("INIT FUNCTION: Shapefile loaded but is empty or None.")
+            logging.error("INIT FUNCTION: GeoPackage loaded but is empty or None.")
             return False
 
-        logging.info(f"INIT FUNCTION: Successfully loaded shapefile. Features loaded: {len(EMISSIONS_GDF)}")
+        logging.info(f"INIT FUNCTION: Successfully loaded GeoPackage. Features loaded: {len(EMISSIONS_GDF)}")
         return True
 
-    except Exception:  # Removed "as e"
-        # logging.exception automatically captures the full error details here
+    except Exception:
         logging.exception("INIT FUNCTION: A critical error occurred while loading emissions data.")
         return False
 
