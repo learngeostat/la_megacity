@@ -441,7 +441,7 @@ def create_help_modal():
             dbc.ModalHeader(dbc.ModalTitle("Emissions Dashboard Help")),
             dbc.ModalBody([
                 html.H5("Overview"),
-                html.P("This dashboard visualizes greenhouse gas emissions across the Los Angeles region, allowing you to explore both spatial patterns and temporal evolution of fluxes and their associated uncertainties."),
+                html.P("This dashboard visualizes CH₄ emissions across the Los Angeles region, allowing you to explore both spatial patterns and temporal evolution of fluxes and their associated uncertainties."),
                 
                 html.H5("Analysis Controls"),
                 html.H6("Display Options:"),

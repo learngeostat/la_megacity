@@ -206,7 +206,7 @@ def create_header_card_emissions():
         dbc.Collapse(
             dbc.CardBody([
                 html.P([
-                    "Explore simulated household CO₂ emissions across Los Angeles County census tracts (2025-2054).",
+                    "Explore simulated household CO₂ (Non Transportation) emissions across Los Angeles County census tracts (2025-2054).",
                     " Analyze spatial patterns, temporal trends, and socioeconomic relationships."
                 ], className="text-muted mb-0")
             ]),
