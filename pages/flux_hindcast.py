@@ -22,7 +22,6 @@ import plotly.graph_objs as go
 import os
 import geopandas as gpd
 import xarray as xr
-from utils import constants as prm
 from utils import conc_func as cfunc 
 import math
 import tempfile
@@ -64,6 +63,49 @@ feature_id_mapping = {
     'census': 'TRACTCE',
     'custom': 'Zones'
 }
+
+def load_gpkg_from_gcs(gcs_gpkg_path):
+    """
+    Load GeoPackage from GCS by downloading to temporary local storage first.
+    Required because GDAL doesn't work directly with GCS paths.
+    """
+    
+    logger.info(f"Loading GeoPackage from GCS: {gcs_gpkg_path}")
+    fs = gcsfs.GCSFileSystem()
+    
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file:
+            try:
+                # Download the GeoPackage file from GCS
+                logger.info(f"Downloading GeoPackage to temporary location: {temp_file.name}")
+                fs.get(gcs_gpkg_path, temp_file.name)
+                
+                # Verify the file was downloaded correctly
+                temp_size = os.path.getsize(temp_file.name)
+                logger.info(f"Downloaded GeoPackage file size: {temp_size} bytes")
+                
+                if temp_size == 0:
+                    raise ValueError("Downloaded GeoPackage file is empty")
+                
+                # Load the GeoPackage
+                gdf = gpd.read_file(temp_file.name)
+                logger.info(f"Successfully loaded GeoPackage with {len(gdf)} features")
+                
+                return gdf
+                
+            finally:
+                # Clean up the temporary file
+                try:
+                    os.unlink(temp_file.name)
+                    logger.info("Cleaned up temporary GeoPackage file")
+                except OSError as e:
+                    logger.warning(f"Could not clean up temporary file {temp_file.name}: {e}")
+            
+    except Exception as e:
+        logger.error(f"Failed to load GeoPackage from {gcs_gpkg_path}: {e}")
+        raise
+
+
 
 def debug_netcdf_file(filename):
     """
@@ -216,9 +258,6 @@ def load_spatial_netcdf_data(gcs_path):
     """
     Load spatial NetCDF data from GCS.
     """
-    import tempfile
-    import os
-    import xarray as xr
     
     logger.info(f"Loading spatial NetCDF data from {gcs_path}")
     fs = gcsfs.GCSFileSystem()
@@ -459,7 +498,7 @@ def init():
         logger.info("--- Flux hindcast initialization successful ---")
         return True
         
-    except Exception as e:
+    except Exception:
         logger.error("--- Critical error in flux hindcast initialization ---", exc_info=True)
         return False
     
@@ -467,11 +506,6 @@ def load_spatial_hdf_data_with_time_debug(gcs_path):
     """
     Load spatial HDF5 data with detailed time field debugging.
     """
-    import tempfile
-    import os
-    import h5py
-    import pandas as pd
-    import numpy as np
     
     logger.info(f"Loading spatial HDF5 data from {gcs_path} with time debugging")
     fs = gcsfs.GCSFileSystem()
@@ -558,11 +592,6 @@ def load_spatial_hdf_data(gcs_path):
     """
     Quick fix: Extract data values from HDF5 and use NetCDF time coordinates.
     """
-    import tempfile
-    import os
-    import pandas as pd
-    import h5py
-    import numpy as np
     
     logger.info(f"Loading spatial HDF5 data with NetCDF time coordinates")
     fs = gcsfs.GCSFileSystem()
@@ -1713,13 +1742,14 @@ def register_callbacks(app):
                     'custom': 'zones_partitoned'
                 }[spatial_agg]
                 
-                shapefile_names = {
-                    'zip_code_socab': 'zip_code_socab.shp',
-                    'census_tract_clipped': 'census_tract_clipped.shp',
-                    'zones_partitoned': 'zones_partitoned.shp'
+                gpkg_names = {
+                    'zip_code_socab': 'zip_code_socab.gpkg',
+                    'census_tract_clipped': 'census_tract_clipped.gpkg',
+                    'zones_partitoned': 'zones_partitoned.gpkg'
                 }
-                shapefile_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_names[boundaries_key]}"
-                boundaries = gpd.read_file(shapefile_path)
+                gpkg_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{gpkg_names[boundaries_key]}"
+                # Use the new function to load GeoPackage from GCS
+                boundaries = load_gpkg_from_gcs(gpkg_path)
                 
                 # Add the feature ID mapping
                 feature_id_mapping = {
