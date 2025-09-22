@@ -1417,11 +1417,6 @@ dbc.Row([
         
     ], fluid=True, className="px-4 py-3")
 
-# def register_callbacks(app):
-#     """Register callbacks for flux hindcast page"""
-#     # Add callback registrations here
-#     pass
-
 def register_callbacks(app):
     
     
