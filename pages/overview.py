@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Enhanced Overview Page for LA Megacity Information System
+Enhanced Overview Page for LA Megacity Dashboard
 Provides comprehensive description of system capabilities and features
 """
 
@@ -35,13 +35,34 @@ def create_header_card():
         ]),
         dbc.Collapse(
             dbc.CardBody([
-                html.P(
-                    "A comprehensive platform for monitoring, analyzing, and visualizing greenhouse gas emissions "
-                    "across the Los Angeles metropolitan area using ground-based measurements, satellite observations, "
-                    "and emission modeling systems. Near-real-time status monitor for measurements and fluxes is under development.",
-                    className="text-muted mb-3 fs-5"
-                ),
-                # System Overview Statistics
+                html.P([
+                    "A comprehensive platform for monitoring, analyzing, and visualizing greenhouse gas measurements and emissions ",
+                    "across the Los Angeles metropolitan area. Near real time updates for fluxes and measurements is under development"
+                ], className="text-muted mb-0 fs-5")
+            ]),
+            id="overview-header-collapse",
+            is_open=True,
+        )
+    ], className="mb-4 shadow-sm")
+
+def create_system_overview_card():
+    """Create system overview statistics card"""
+    return dbc.Card([
+        dbc.CardHeader([
+            dbc.Button(
+                [
+                    html.I(className="fas fa-chart-pie me-2"),
+                    "System Overview",
+                    html.I(className="fas fa-chevron-down ms-2", id="system-overview-chevron"),
+                ],
+                color="link",
+                id="system-overview-toggle",
+                className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
+                style={"box-shadow": "none"}
+            )
+        ]),
+        dbc.Collapse(
+            dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
                         dbc.Card([
@@ -81,94 +102,33 @@ def create_header_card():
                             dbc.CardBody([
                                 html.Div([
                                     html.I(className="fas fa-clock fa-2x text-warning mb-2"),
-                                    html.H4("Development", className="mb-1"),
-                                    html.P("Near-Real-Time Monitor", className="text-muted mb-0")
+                                    html.H4("Annual", className="mb-1"),
+                                    html.P("Data Updates", className="text-muted mb-0")
                                 ], className="text-center")
                             ])
                         ], className="h-100 border-0 bg-light")
                     ], md=3)
                 ], className="g-3")
             ]),
-            id="overview-header-collapse",
+            id="system-overview-collapse",
             is_open=True,
         )
     ], className="mb-4 shadow-sm")
 
-def create_oco3_card():
-    """Create OCO-3 SAM Mode card"""
-    return dbc.Card([
-        dbc.CardHeader([
-            dbc.Button(
-                [
-                    html.I(className="fas fa-satellite me-2"),
-                    "OCO-3 Snapshot Area Mode (SAM)",
-                    html.I(className="fas fa-chevron-down ms-2", id="oco3-chevron"),
-                ],
-                color="link",
-                id="oco3-toggle",
-                className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
-                style={"box-shadow": "none"}
-            )
-        ]),
-        dbc.Collapse(
-            dbc.CardBody([
-                dbc.Row([
-                    dbc.Col([
-                        html.H6("Overview", className="text-primary"),
-                        html.P(
-                            "Analyze column-averaged CO₂ concentrations from the Orbiting Carbon Observatory-3 satellite "
-                            "using high-resolution Snapshot Area Mode observations over the Los Angeles metropolitan area."
-                        ),
-                        
-                        html.H6("Key Capabilities", className="text-primary mt-3"),
-                        html.Ul([
-                            html.Li("High-resolution satellite XCO₂ measurements with spatial detail"),
-                            html.Li("Animation controls for temporal pattern visualization"),
-                            html.Li("ZIP code aggregation for neighborhood-level analysis"),
-                            html.Li("Variable and fixed color scaling for comparative studies"),
-                            html.Li("Statistical analysis including mean and standard deviation"),
-                            html.Li("Interactive spatial and temporal data exploration")
-                        ], className="mb-3"),
-                        
-                        html.H6("Data Characteristics", className="text-primary"),
-                        html.P("NASA's OCO-3 satellite provides detailed spatial coverage of atmospheric CO₂ concentrations with enhanced resolution over urban areas through the SAM observation mode.")
-                    ], md=8),
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardBody([
-                                html.H6("Usage Guide", className="text-success mb-3"),
-                                html.Div([
-                                    html.Strong("Time Animation: "), 
-                                    html.Span("Use play/pause controls to visualize temporal changes"), html.Br(), html.Br(),
-                                    html.Strong("View Modes: "), 
-                                    html.Span("Switch between raw observations and ZIP code aggregation"), html.Br(), html.Br(),
-                                    html.Strong("Color Scaling: "), 
-                                    html.Span("Adjust ranges for enhanced pattern detection"), html.Br(), html.Br(),
-                                    html.Strong("Interaction: "), 
-                                    html.Span("Click ZIP codes to generate time series plots")
-                                ])
-                            ])
-                        ], className="bg-light border-0")
-                    ], md=4)
-                ])
-            ]),
-            id="oco3-collapse",
-            is_open=False,
-        )
-    ], className="mb-4 shadow-sm")
-
-def create_surface_card():
-    """Create Surface Observations card"""
-    return dbc.Card([
+def create_dashboard_descriptions():
+    """Create cards describing each dashboard module"""
+    
+    # Surface Observations Card
+    surface_card = dbc.Card([
         dbc.CardHeader([
             dbc.Button(
                 [
                     html.I(className="fas fa-industry me-2"),
-                    "Surface Observations Network",
-                    html.I(className="fas fa-chevron-down ms-2", id="surface-chevron"),
+                    "Surface CO₂ Network",
+                    html.I(className="fas fa-chevron-down ms-2", id="surface-desc-chevron"),
                 ],
                 color="link",
-                id="surface-toggle",
+                id="surface-desc-toggle",
                 className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
                 style={"box-shadow": "none"}
             )
@@ -177,61 +137,53 @@ def create_surface_card():
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
-                        html.H6("Overview", className="text-primary"),
-                        html.P(
-                            "Monitor atmospheric CO₂, CH₄, and CO concentrations across the Los Angeles basin "
-                            "using a network of ground-based high-precision sensors providing continuous measurements."
-                        ),
+                        html.H6("Purpose", className="text-primary"),
+                        html.P("Monitor atmospheric CO₂, CH₄, and CO concentrations across the Los Angeles basin using a network of ground-based sensors."),
                         
-                        html.H6("Key Capabilities", className="text-primary mt-3"),
+                        html.H6("Key Features", className="text-primary mt-3"),
                         html.Ul([
-                            html.Li("Real-time and historical concentration data from multiple stations"),
-                            html.Li("Multi-gas analysis capabilities (CO₂, CH₄, CO)"),
-                            html.Li("Background subtraction for enhanced signal detection"),
-                            html.Li("Flexible temporal aggregation from hourly to monthly scales"),
-                            html.Li("Advanced statistical analysis and quality control tools"),
-                            html.Li("Interactive site selection and cross-station comparison")
+                            html.Li("Real-time and historical concentration data"),
+                            html.Li("Multi-gas analysis (CO₂, CH₄, CO)"),
+                            html.Li("Background subtraction capabilities"),
+                            html.Li("Temporal aggregation (hourly to monthly)"),
+                            html.Li("Statistical analysis tools"),
+                            html.Li("Interactive site selection and comparison")
                         ], className="mb-3"),
                         
-                        html.H6("Data Characteristics", className="text-primary"),
-                        html.P("Ground-based monitoring stations equipped with high-precision gas analyzers providing continuous, calibrated measurements with comprehensive quality assurance protocols.")
+                        html.H6("Data Sources", className="text-primary"),
+                        html.P("Ground-based monitoring stations with high-precision gas analyzers providing continuous measurements.")
                     ], md=8),
                     dbc.Col([
                         dbc.Card([
                             dbc.CardBody([
-                                html.H6("Usage Guide", className="text-success mb-3"),
-                                html.Div([
-                                    html.Strong("Site Selection: "), 
-                                    html.Span("Choose from available monitoring locations"), html.Br(), html.Br(),
-                                    html.Strong("Time Controls: "), 
-                                    html.Span("Use slider or date inputs for period selection"), html.Br(), html.Br(),
-                                    html.Strong("Analysis Mode: "), 
-                                    html.Span("Switch between raw and background-subtracted data"), html.Br(), html.Br(),
-                                    html.Strong("Data Export: "), 
-                                    html.Span("Download data or copy for external analysis")
+                                html.H6("Navigation Tips", className="text-success"),
+                                html.Small([
+                                    html.Strong("• Select Sites: "), "Choose monitoring locations", html.Br(),
+                                    html.Strong("• Time Range: "), "Use slider or date inputs", html.Br(),
+                                    html.Strong("• Analysis: "), "Switch between raw/background data", html.Br(),
+                                    html.Strong("• Export: "), "Download data or copy for AI analysis"
                                 ])
                             ])
                         ], className="bg-light border-0")
                     ], md=4)
                 ])
             ]),
-            id="surface-collapse",
+            id="surface-desc-collapse",
             is_open=False,
         )
-    ], className="mb-4 shadow-sm")
-
-def create_flux_hindcast_card():
-    """Create Flux Hindcast card"""
-    return dbc.Card([
+    ], className="mb-3")
+    
+    # OCO-3 Observations Card  
+    oco3_card = dbc.Card([
         dbc.CardHeader([
             dbc.Button(
                 [
-                    html.I(className="fas fa-history me-2"),
-                    "Flux Hindcast Analysis",
-                    html.I(className="fas fa-chevron-down ms-2", id="hindcast-chevron"),
+                    html.I(className="fas fa-satellite me-2"),
+                    "OCO-3 XCO₂ Snapshot Area Mode",
+                    html.I(className="fas fa-chevron-down ms-2", id="oco3-desc-chevron"),
                 ],
                 color="link",
-                id="hindcast-toggle",
+                id="oco3-desc-toggle",
                 className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
                 style={"box-shadow": "none"}
             )
@@ -240,61 +192,53 @@ def create_flux_hindcast_card():
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
-                        html.H6("Overview", className="text-primary"),
-                        html.P(
-                            "Analyze historical CH₄ gas emissions patterns using inverse modeling techniques that "
-                            "combine atmospheric measurements with transport models to estimate past emission sources and magnitudes."
-                        ),
+                        html.H6("Purpose", className="text-primary"),
+                        html.P("Analyze column-averaged CO₂ concentrations from the Orbiting Carbon Observatory-3 satellite using Snapshot Area Mode (SAM) observations."),
                         
-                        html.H6("Key Capabilities", className="text-primary mt-3"),
+                        html.H6("Key Features", className="text-primary mt-3"),
                         html.Ul([
-                            html.Li("Flux magnitude and uncertainty visualization with confidence intervals"),
-                            html.Li("Multiple spatial aggregation levels (native grid, ZIP codes, census tracts, custom regions)"),
-                            html.Li("Temporal aggregation controls from daily to seasonal scales"),
-                            html.Li("Animation capabilities for time series pattern identification"),
-                            html.Li("Advanced color scaling with logarithmic and linear options"),
-                            html.Li("Comprehensive data export in multiple formats")
+                            html.Li("High-resolution satellite XCO₂ measurements"),
+                            html.Li("Animation controls for temporal visualization"),
+                            html.Li("ZIP code aggregation capabilities"),
+                            html.Li("Variable and fixed color scaling"),
+                            html.Li("Statistical analysis (mean/standard deviation)"),
+                            html.Li("Interactive spatial and temporal analysis")
                         ], className="mb-3"),
                         
-                        html.H6("Data Characteristics", className="text-primary"),
-                        html.P("Inverse modeling results combining atmospheric observations with meteorological transport models to provide spatially and temporally resolved emission estimates with quantified uncertainties.")
+                        html.H6("Data Sources", className="text-primary"),
+                        html.P("NASA's OCO-3 satellite measurements providing detailed spatial coverage of atmospheric CO₂ concentrations.")
                     ], md=8),
                     dbc.Col([
                         dbc.Card([
                             dbc.CardBody([
-                                html.H6("Usage Guide", className="text-success mb-3"),
-                                html.Div([
-                                    html.Strong("Display Options: "), 
-                                    html.Span("Toggle between flux and uncertainty visualizations"), html.Br(), html.Br(),
-                                    html.Strong("Spatial Scale: "), 
-                                    html.Span("Choose appropriate aggregation resolution"), html.Br(), html.Br(),
-                                    html.Strong("Time Animation: "), 
-                                    html.Span("Control temporal playback for pattern analysis"), html.Br(), html.Br(),
-                                    html.Strong("Region Selection: "), 
-                                    html.Span("Click areas to generate detailed time series")
+                                html.H6("Navigation Tips", className="text-success"),
+                                html.Small([
+                                    html.Strong("• Time Control: "), "Use play/pause for animation", html.Br(),
+                                    html.Strong("• View Mode: "), "Switch between observations/ZIP aggregation", html.Br(),
+                                    html.Strong("• Scale: "), "Adjust color ranges for comparison", html.Br(),
+                                    html.Strong("• Interaction: "), "Click ZIP codes for time series"
                                 ])
                             ])
                         ], className="bg-light border-0")
                     ], md=4)
                 ])
             ]),
-            id="hindcast-collapse",
+            id="oco3-desc-collapse",
             is_open=False,
         )
-    ], className="mb-4 shadow-sm")
-
-def create_flux_forecast_card():
-    """Create Flux Forecast card"""
-    return dbc.Card([
+    ], className="mb-3")
+    
+    # Emissions (Hindcast) Card
+    hindcast_card = dbc.Card([
         dbc.CardHeader([
             dbc.Button(
                 [
                     html.I(className="fas fa-chart-line me-2"),
-                    "Flux Forecast System",
-                    html.I(className="fas fa-chevron-down ms-2", id="forecast-chevron"),
+                    "Emissions (Hindcast Analysis)",
+                    html.I(className="fas fa-chevron-down ms-2", id="hindcast-desc-chevron"),
                 ],
                 color="link",
-                id="forecast-toggle",
+                id="hindcast-desc-toggle",
                 className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
                 style={"box-shadow": "none"}
             )
@@ -303,62 +247,53 @@ def create_flux_forecast_card():
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
-                        html.H6("Overview", className="text-primary"),
-                        html.P(
-                            "Explore projected greenhouse gas emissions across Los Angeles County using advanced "
-                            "modeling approaches that integrate socioeconomic factors, policy scenarios, and behavioral patterns "
-                            "to forecast future emission trajectories."
-                        ),
+                        html.H6("Purpose", className="text-primary"),
+                        html.P("Analyze historical CH₄ gas emissions patterns using inverse modeling and measurement-based approaches."),
                         
-                        html.H6("Key Capabilities", className="text-primary mt-3"),
+                        html.H6("Key Features", className="text-primary mt-3"),
                         html.Ul([
-                            html.Li("Multi-scenario emission projections with policy impact assessment"),
-                            html.Li("Socioeconomic variable integration and demographic trend analysis"),
-                            html.Li("Emission reduction pathway evaluation and optimization"),
-                            html.Li("Interactive temporal focus controls for detailed period analysis"),
-                            html.Li("Flexible scaling options (linear and logarithmic) for data visualization"),
-                            html.Li("High-resolution spatial analysis at census tract level")
+                            html.Li("Flux and uncertainty visualization"),
+                            html.Li("Multiple spatial aggregations (native, ZIP, census, custom)"),
+                            html.Li("Temporal aggregation controls"),
+                            html.Li("Animation capabilities for time series"),
+                            html.Li("Advanced color scaling options"),
+                            html.Li("Comprehensive data export options")
                         ], className="mb-3"),
                         
-                        html.H6("Data Characteristics", className="text-primary"),
-                        html.P("Advanced modeling simulations incorporating household behavior patterns, policy implementation scenarios, demographic changes, and economic factors to provide comprehensive future emission projections.")
+                        html.H6("Data Sources", className="text-primary"),
+                        html.P("Inverse modeling results combining atmospheric measurements with transport models to estimate emissions.")
                     ], md=8),
                     dbc.Col([
                         dbc.Card([
                             dbc.CardBody([
-                                html.H6("Usage Guide", className="text-success mb-3"),
-                                html.Div([
-                                    html.Strong("Scenario Selection: "), 
-                                    html.Span("Choose from available policy and behavioral scenarios"), html.Br(), html.Br(),
-                                    html.Strong("Variable Analysis: "), 
-                                    html.Span("Switch between emissions and socioeconomic indicators"), html.Br(), html.Br(),
-                                    html.Strong("Temporal Focus: "), 
-                                    html.Span("Adjust analysis period for detailed examination"), html.Br(), html.Br(),
-                                    html.Strong("Tract Selection: "), 
-                                    html.Span("Click census tracts for detailed trend analysis")
+                                html.H6("Navigation Tips", className="text-success"),
+                                html.Small([
+                                    html.Strong("• Display: "), "Toggle flux/uncertainty views", html.Br(),
+                                    html.Strong("• Aggregation: "), "Choose spatial resolution", html.Br(),
+                                    html.Strong("• Animation: "), "Control temporal playback", html.Br(),
+                                    html.Strong("• Selection: "), "Click regions for time series"
                                 ])
                             ])
                         ], className="bg-light border-0")
                     ], md=4)
                 ])
             ]),
-            id="forecast-collapse",
+            id="hindcast-desc-collapse",
             is_open=False,
         )
-    ], className="mb-4 shadow-sm")
-
-def create_technical_info_card():
-    """Create technical information and getting started card"""
-    return dbc.Card([
+    ], className="mb-3")
+    
+    # ABM Emissions Card
+    abm_card = dbc.Card([
         dbc.CardHeader([
             dbc.Button(
                 [
-                    html.I(className="fas fa-info me-2"),
-                    "System Information & Getting Started",
-                    html.I(className="fas fa-chevron-down ms-2", id="info-chevron"),
+                    html.I(className="fas fa-chart-area me-2"),
+                    "Agent Based Model (ABM) Emissions Analysis",
+                    html.I(className="fas fa-chevron-down ms-2", id="abm-desc-chevron"),
                 ],
                 color="link",
-                id="info-toggle",
+                id="abm-desc-toggle",
                 className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
                 style={"box-shadow": "none"}
             )
@@ -367,44 +302,178 @@ def create_technical_info_card():
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
-                        html.H6("Getting Started", className="text-primary"),
-                        html.Div([
-                            html.Strong("1. Module Selection: "), 
-                            html.Span("Choose the appropriate analysis module based on your research objectives."), html.Br(),
-                            html.Strong("2. Parameter Configuration: "), 
-                            html.Span("Use control panels to set time periods, spatial regions, and analysis options."), html.Br(),
-                            html.Strong("3. Interactive Exploration: "), 
-                            html.Span("Click on maps and use animation controls to explore patterns."), html.Br(),
-                            html.Strong("4. Data Export: "), 
-                            html.Span("Download results in various formats for further analysis.")
-                        ], className="mb-4"),
+                        html.H6("Purpose", className="text-primary"),
+                        html.P("Explore simulated household CO₂ emissions across Los Angeles County census tracts using agent-based modeling for future scenarios (2025-2054)."),
                         
-                        html.H6("Technical Specifications", className="text-primary"),
+                        html.H6("Key Features", className="text-primary mt-3"),
                         html.Ul([
-                            html.Li("Real-time quality control and validation algorithms"),
-                            html.Li("Multi-scale spatial and temporal aggregation capabilities"),
-                            html.Li("Interactive visualization with zoom, pan, and selection tools"),
-                            html.Li("Statistical analysis including uncertainty quantification"),
-                            html.Li("Multiple data export formats (CSV, NetCDF, ZIP archives)")
-                        ], className="mb-3")
+                            html.Li("Absolute and per capita emissions analysis"),
+                            html.Li("Socioeconomic variable integration"),
+                            html.Li("Emission reduction scenario analysis"),
+                            html.Li("Interactive temporal focus controls"),
+                            html.Li("Linear and logarithmic scaling options"),
+                            html.Li("Census tract-level spatial resolution")
+                        ], className="mb-3"),
+                        
+                        html.H6("Data Sources", className="text-primary"),
+                        html.P("Agent-based model simulations incorporating household behavior, policy scenarios, and socioeconomic factors.")
                     ], md=8),
                     dbc.Col([
                         dbc.Card([
                             dbc.CardBody([
-                                html.H6("Contact & Support", className="text-primary mb-3"),
-                                html.P("For technical support, data access requests, or collaboration inquiries:", className="text-muted mb-2"),
-                                html.P("Vineet Yadav", className="mb-1"),
-                                html.P("yadavvineet@gmail.com", className="text-muted mb-3"),
-                                
-                                html.H6("Version Information", className="text-primary"),
-                                html.P("Beta System Version: 2.0", className="text-muted mb-1"),
-                                html.P("Last Updated: 2025", className="text-muted mb-0")
+                                html.H6("Navigation Tips", className="text-success"),
+                                html.Small([
+                                    html.Strong("• Variables: "), "Switch between emissions/demographics", html.Br(),
+                                    html.Strong("• Time Focus: "), "County vs. tract-level analysis", html.Br(),
+                                    html.Strong("• Scaling: "), "Adjust color maps for visualization", html.Br(),
+                                    html.Strong("• Selection: "), "Click tracts for detailed trends"
+                                ])
                             ])
                         ], className="bg-light border-0")
                     ], md=4)
                 ])
             ]),
-            id="info-collapse",
+            id="abm-desc-collapse",
+            is_open=False,
+        )
+    ], className="mb-3")
+    
+    return [surface_card, oco3_card, hindcast_card, abm_card]
+
+def create_technical_specifications():
+    """Create technical specifications section"""
+    return dbc.Card([
+        dbc.CardHeader([
+            dbc.Button(
+                [
+                    html.I(className="fas fa-cogs me-2"),
+                    "Technical Specifications",
+                    html.I(className="fas fa-chevron-down ms-2", id="tech-specs-chevron"),
+                ],
+                color="link",
+                id="tech-specs-toggle",
+                className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
+                style={"box-shadow": "none"}
+            )
+        ]),
+        dbc.Collapse(
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.H6("Data Processing", className="text-primary"),
+                        html.Ul([
+                            html.Li("Real-time quality control and validation"),
+                            html.Li("Background subtraction algorithms"),
+                            html.Li("Temporal aggregation (1-hour to monthly)"),
+                            html.Li("Spatial aggregation at multiple scales"),
+                            html.Li("Statistical outlier detection")
+                        ])
+                    ], md=6),
+                    dbc.Col([
+                        html.H6("Visualization Features", className="text-primary"),
+                        html.Ul([
+                            html.Li("Interactive mapping with zoom/pan"),
+                            html.Li("Time series animation controls"),
+                            html.Li("Multi-panel layouts with expansion"),
+                            html.Li("Customizable color scales"),
+                            html.Li("Data export in multiple formats")
+                        ])
+                    ], md=6)
+                ]),
+                html.Hr(),
+                dbc.Row([
+                    dbc.Col([
+                        html.H6("Supported Data Formats", className="text-primary"),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Strong("Input: "),
+                                html.Span("NetCDF, HDF5, CSV, Shapefiles")
+                            ], md=6),
+                            dbc.Col([
+                                html.Strong("Export: "),
+                                html.Span("CSV, NetCDF, ZIP archives")
+                            ], md=6)
+                        ])
+                    ], md=12)
+                ])
+            ]),
+            id="tech-specs-collapse",
+            is_open=False,
+        )
+    ], className="mb-4 shadow-sm")
+
+def create_getting_started():
+    """Create getting started guide"""
+    return dbc.Card([
+        dbc.CardHeader([
+            dbc.Button(
+                [
+                    html.I(className="fas fa-rocket me-2"),
+                    "Getting Started",
+                    html.I(className="fas fa-chevron-down ms-2", id="getting-started-chevron"),
+                ],
+                color="link",
+                id="getting-started-toggle",
+                className="text-primary fs-5 text-decoration-none p-0 w-100 text-start",
+                style={"box-shadow": "none"}
+            )
+        ]),
+        dbc.Collapse(
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.Div([
+                            html.H6("1. Choose Your Analysis", className="text-primary"),
+                            html.P("Select the appropriate dashboard based on your research needs:"),
+                            html.Ul([
+                                html.Li(html.Strong("Surface Network: "), "For detailed atmospheric concentration analysis"),
+                                html.Li(html.Strong("OCO-3: "), "For satellite-based regional CO₂ patterns"),
+                                html.Li(html.Strong("Hindcast: "), "For historical emission estimates"),
+                                html.Li(html.Strong("ABM: "), "For future scenario modeling")
+                            ], className="mb-4")
+                        ])
+                    ], md=6),
+                    dbc.Col([
+                        html.Div([
+                            html.H6("2. Configure Analysis Parameters", className="text-primary"),
+                            html.P("Use the control panels to customize your analysis:"),
+                            html.Ul([
+                                html.Li("Select time periods and spatial regions"),
+                                html.Li("Choose appropriate aggregation levels"),
+                                html.Li("Configure visualization settings"),
+                                html.Li("Set analysis metrics and variables")
+                            ], className="mb-4")
+                        ])
+                    ], md=6)
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        html.Div([
+                            html.H6("3. Explore Interactively", className="text-primary"),
+                            html.P("Use interactive features to dive deeper:"),
+                            html.Ul([
+                                html.Li("Click on maps to see detailed time series"),
+                                html.Li("Use animation controls for temporal patterns"),
+                                html.Li("Expand panels for focused analysis"),
+                                html.Li("Generate statistics for quantitative insights")
+                            ])
+                        ])
+                    ], md=6),
+                    dbc.Col([
+                        html.Div([
+                            html.H6("4. Export and Share", className="text-primary"),
+                            html.P("Save your analysis results:"),
+                            html.Ul([
+                                html.Li("Download data in various formats"),
+                                html.Li("Copy formatted data for AI analysis"),
+                                html.Li("Export visualizations"),
+                                html.Li("Access comprehensive datasets")
+                            ])
+                        ])
+                    ], md=6)
+                ])
+            ]),
+            id="getting-started-collapse",
             is_open=True,
         )
     ], className="mb-4 shadow-sm")
@@ -412,62 +481,106 @@ def create_technical_info_card():
 def get_layout():
     """Return the complete overview page layout"""
     return dbc.Container([
-        # Main Overview Card (includes system stats)
+        # Header
         create_header_card(),
         
-        # OCO-3 SAM Mode Card
-        create_oco3_card(),
+        # System Overview Statistics
+        create_system_overview_card(),
         
-        # Surface Observations Card
-        create_surface_card(),
+        # Getting Started Guide
+        create_getting_started(),
         
-        # Flux Hindcast Card
-        create_flux_hindcast_card(),
+        # Dashboard Descriptions
+        html.H4("Dashboard Modules", className="mb-3 text-primary"),
+        html.Div(create_dashboard_descriptions()),
         
-        # Flux Forecast Card
-        create_flux_forecast_card(),
+        # Technical Specifications
+        create_technical_specifications(),
         
-        # Technical Information & Getting Started
-        create_technical_info_card()
+        # Footer with additional information
+        dbc.Card([
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.H6("Contact & Support", className="text-primary"),
+                        html.P("For technical support, data access requests, or collaboration inquiries, please refer to the documentation or contact Vineet Yadav at yadavvineet@gmail.com.", className="text-muted")
+                    ], md=8),
+                    dbc.Col([
+                        html.H6("Version Information", className="text-primary"),
+                        html.P(" Beta System Version: 2.0", className="text-muted mb-1"),
+                        html.P("Last Updated: 2025", className="text-muted mb-0")
+                    ], md=4)
+                ])
+            ])
+        ], className="mt-4 shadow-sm border-0 bg-light")
         
     ], fluid=True, className="px-4 py-3")
 
 def register_callbacks(app):
     """Register callbacks for the overview page"""
     
-    # Define all the collapse components and their corresponding elements
-    collapse_components = [
-        ("overview-header", "overview-header-collapse", "overview-header-chevron"),
-        ("oco3", "oco3-collapse", "oco3-chevron"),
-        ("surface", "surface-collapse", "surface-chevron"),
-        ("hindcast", "hindcast-collapse", "hindcast-chevron"),
-        ("forecast", "forecast-collapse", "forecast-chevron"),
-        ("info", "info-collapse", "info-chevron")
-    ]
+    # Header collapse callback
+    @app.callback(
+        [Output("overview-header-collapse", "is_open"),
+         Output("overview-header-chevron", "className")],
+        [Input("overview-header-toggle", "n_clicks")],
+        [State("overview-header-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_header_collapse(n_clicks, is_open):
+        if n_clicks:
+            return not is_open, "fas fa-chevron-up ms-2" if not is_open else "fas fa-chevron-down ms-2"
+        return is_open, "fas fa-chevron-down ms-2"
     
-    # Create callbacks for each collapse component
-    for toggle_id, collapse_id, chevron_id in collapse_components:
+    # System overview collapse callback
+    @app.callback(
+        [Output("system-overview-collapse", "is_open"),
+         Output("system-overview-chevron", "className")],
+        [Input("system-overview-toggle", "n_clicks")],
+        [State("system-overview-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_system_overview_collapse(n_clicks, is_open):
+        if n_clicks:
+            return not is_open, "fas fa-chevron-up ms-2" if not is_open else "fas fa-chevron-down ms-2"
+        return is_open, "fas fa-chevron-down ms-2"
+    
+    # Getting started collapse callback
+    @app.callback(
+        [Output("getting-started-collapse", "is_open"),
+         Output("getting-started-chevron", "className")],
+        [Input("getting-started-toggle", "n_clicks")],
+        [State("getting-started-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_getting_started_collapse(n_clicks, is_open):
+        if n_clicks:
+            return not is_open, "fas fa-chevron-up ms-2" if not is_open else "fas fa-chevron-down ms-2"
+        return is_open, "fas fa-chevron-down ms-2"
+    
+    # Dashboard description collapse callbacks
+    for module in ["surface", "oco3", "hindcast", "abm"]:
         @app.callback(
-            [Output(collapse_id, "is_open"),
-             Output(chevron_id, "className")],
-            [Input(f"{toggle_id}-toggle", "n_clicks")],
-            [State(collapse_id, "is_open")],
+            [Output(f"{module}-desc-collapse", "is_open"),
+             Output(f"{module}-desc-chevron", "className")],
+            [Input(f"{module}-desc-toggle", "n_clicks")],
+            [State(f"{module}-desc-collapse", "is_open")],
             prevent_initial_call=True
         )
-        def make_toggle_callback(collapse_id=collapse_id, chevron_id=chevron_id):
-            def toggle_collapse(n_clicks, is_open):
-                if n_clicks:
-                    new_state = not is_open
-                    chevron_class = "fas fa-chevron-up ms-2" if new_state else "fas fa-chevron-down ms-2"
-                    return new_state, chevron_class
-                return is_open, "fas fa-chevron-down ms-2"
-            return toggle_collapse
-        
-        # Create the actual callback with unique function
-        app.callback(
-            [Output(collapse_id, "is_open"),
-             Output(chevron_id, "className")],
-            [Input(f"{toggle_id}-toggle", "n_clicks")],
-            [State(collapse_id, "is_open")],
-            prevent_initial_call=True
-        )(make_toggle_callback())
+        def toggle_desc_collapse(n_clicks, is_open):
+            if n_clicks:
+                return not is_open, "fas fa-chevron-up ms-2" if not is_open else "fas fa-chevron-down ms-2"
+            return is_open, "fas fa-chevron-down ms-2"
+    
+    # Technical specifications collapse callback
+    @app.callback(
+        [Output("tech-specs-collapse", "is_open"),
+         Output("tech-specs-chevron", "className")],
+        [Input("tech-specs-toggle", "n_clicks")],
+        [State("tech-specs-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_tech_specs_collapse(n_clicks, is_open):
+        if n_clicks:
+            return not is_open, "fas fa-chevron-up ms-2" if not is_open else "fas fa-chevron-down ms-2"
+        return is_open, "fas fa-chevron-down ms-2"
