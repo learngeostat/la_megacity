@@ -22,6 +22,7 @@ import plotly.graph_objs as go
 import os
 import geopandas as gpd
 import xarray as xr
+from utils import constants as prm
 from utils import conc_func as cfunc 
 import math
 import tempfile
@@ -35,8 +36,6 @@ import logging
 #logging.getLogger("fiona").disabled = True
 
 logger = logging.getLogger(__name__)
-
-
 
 # Hardcoded GCS bucket paths
 # Hardcoded GCS bucket paths
@@ -65,60 +64,6 @@ feature_id_mapping = {
     'census': 'TRACTCE',
     'custom': 'Zones'
 }
-
-
-def load_geopackage_from_gcs(gcs_path):
-    """
-    Load GeoPackage data from GCS using temporary local storage.
-    
-    Args:
-        gcs_path (str): GCS path to the .gpkg file
-        
-    Returns:
-        gpd.GeoDataFrame: Loaded geodataframe or None if failed
-    """
-    import gcsfs
-    
-    logger.info(f"Loading GeoPackage from {gcs_path}")
-    fs = gcsfs.GCSFileSystem()
-    
-    try:
-        # Check if file exists
-        if not fs.exists(gcs_path):
-            logger.error(f"GeoPackage file does not exist: {gcs_path}")
-            return None
-            
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(suffix='.gpkg', delete=False) as temp_file:
-            try:
-                # Download the file from GCS
-                logger.info(f"Downloading GeoPackage to temporary location: {temp_file.name}")
-                fs.get(gcs_path, temp_file.name)
-                
-                # Verify download
-                downloaded_size = os.path.getsize(temp_file.name)
-                logger.info(f"Downloaded GeoPackage size: {downloaded_size} bytes")
-                
-                if downloaded_size == 0:
-                    raise ValueError("Downloaded GeoPackage file is empty")
-                
-                # Load with GeoPandas
-                gdf = gpd.read_file(temp_file.name)
-                logger.info(f"Successfully loaded GeoPackage with {len(gdf)} features")
-                
-                return gdf
-                
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_file.name)
-                    logger.info("Cleaned up temporary GeoPackage file")
-                except OSError as e:
-                    logger.warning(f"Could not clean up temporary file {temp_file.name}: {e}")
-                    
-    except Exception as e:
-        logger.error(f"Failed to load GeoPackage from {gcs_path}: {e}")
-        return None
 
 def debug_netcdf_file(filename):
     """
@@ -514,7 +459,7 @@ def init():
         logger.info("--- Flux hindcast initialization successful ---")
         return True
         
-    except Exception:
+    except Exception as e:
         logger.error("--- Critical error in flux hindcast initialization ---", exc_info=True)
         return False
     
@@ -526,7 +471,7 @@ def load_spatial_hdf_data_with_time_debug(gcs_path):
     import os
     import h5py
     import pandas as pd
-
+    import numpy as np
     
     logger.info(f"Loading spatial HDF5 data from {gcs_path} with time debugging")
     fs = gcsfs.GCSFileSystem()
@@ -617,6 +562,7 @@ def load_spatial_hdf_data(gcs_path):
     import os
     import pandas as pd
     import h5py
+    import numpy as np
     
     logger.info(f"Loading spatial HDF5 data with NetCDF time coordinates")
     fs = gcsfs.GCSFileSystem()
@@ -1677,7 +1623,7 @@ def register_callbacks(app):
             x=1.02,
             xanchor='left',
             title=dict(
-                text='µmol m⁻² sec⁻²' if display_type == 'flux' else 'Uncertainty',
+                text='µmol m² sec⁻²' if display_type == 'flux' else 'Uncertainty',
                 side='right'
             ),
             tickfont=dict(size=10)
@@ -1764,21 +1710,21 @@ def register_callbacks(app):
                 # Choose appropriate DataFrame based on display type
                 df = est_flux if display_type == 'flux' else unc_flux
                 
-                # Get boundaries for the chosen aggregation from GCS - UPDATED FOR GPKG
-                boundaries_file_mapping = {
-                    'zip': 'zip_code_socab.gpkg',
-                    'census': 'census_tract_clipped.gpkg', 
-                    'custom': 'zones_partitoned.gpkg'
+                # Get boundaries for the chosen aggregation from GCS
+                GCS_SHAPEFILE_FOLDER_PATH = "gs://la-megacity-dashboard-data-1/data/shapefiles/"
+                boundaries_key = {
+                    'zip': 'zip_code_socab',
+                    'census': 'census_tract_clipped',
+                    'custom': 'zones_partitoned'
+                }[spatial_agg]
+                
+                shapefile_names = {
+                    'zip_code_socab': 'zip_code_socab.shp',
+                    'census_tract_clipped': 'census_tract_clipped.shp',
+                    'zones_partitoned': 'zones_partitoned.shp'
                 }
-                
-                shapefile_filename = boundaries_file_mapping[spatial_agg]
-                shapefile_gcs_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_filename}"
-                
-                # Load GeoPackage from GCS using helper function
-                boundaries = load_geopackage_from_gcs(shapefile_gcs_path)
-                
-                if boundaries is None:
-                    raise ValueError(f"Could not load boundaries for {spatial_agg} aggregation")
+                shapefile_path = f"{GCS_SHAPEFILE_FOLDER_PATH}{shapefile_names[boundaries_key]}"
+                boundaries = gpd.read_file(shapefile_path)
                 
                 # Add the feature ID mapping
                 feature_id_mapping = {
@@ -1792,9 +1738,9 @@ def register_callbacks(app):
                 selected_dates = pd.to_datetime(DATES[time_range[0]:time_range[1]+1], unit='s')
                 current_data = df[selected_dates].mean(axis=1)
                 
-                # Create base choroplethmapbox arguments - UPDATED FOR GPKG
+                # Create base choroplethmapbox arguments
                 choroplethmapbox_args = {
-                    'geojson': boundaries.to_json(),  # Use to_json() instead of __geo_interface__
+                    'geojson': boundaries.__geo_interface__,
                     'featureidkey': feature_id_key,
                     'locations': current_data.index,
                     'z': current_data.values,
@@ -1852,7 +1798,7 @@ def register_callbacks(app):
             timeseries_layout = dict(
                 autosize=True,
                 xaxis_title="Date",
-                yaxis_title="Emissions (µmol m⁻² sec⁻²)" if display_type == 'flux' else 'Uncertainty (µmol m⁻² sec⁻²)',
+                yaxis_title="Emissions (µmol m² sec⁻²)" if display_type == 'flux' else 'Uncertainty (µmol m² sec⁻²)',
                 margin=dict(l=50, r=30, t=40, b=40),
                 paper_bgcolor='white',
                 plot_bgcolor='rgba(240, 242, 245, 0.8)',
@@ -2039,7 +1985,7 @@ def register_callbacks(app):
             logger.error(f"Error in dashboard update: {e}")
             return go.Figure(), go.Figure(), dash.no_update
     
-    
+                
     # Date range display callback
     @app.callback(
     Output('hindcast-aggregation-period-text', 'children'),
@@ -2330,4 +2276,6 @@ def register_callbacks(app):
         if help_clicks or close_clicks:
             return not is_open
         return is_open
+    
+
     
